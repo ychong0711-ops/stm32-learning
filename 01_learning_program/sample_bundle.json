@@ -1,0 +1,195 @@
+{
+  "title": "온도 경보 시스템 (STM32F4 + FreeRTOS 교육용)",
+  "files": [
+    {
+      "path": "src/temp_alarm.c",
+      "content": "// temp_alarm.c — 온도 경보 태스크 (STM32F4 + FreeRTOS, 교육용 예제)\n#include \"task.h\" // FreeRTOS 태스크 API 를 사용하기 위해 포함합니다.\n#include \"bsp_uart.h\" // UART 출력 함수 선언을 포함합니다.\n#include \"bsp_gpio.h\" // GPIO 제어 함수 선언을 포함합니다.\n#define TEMP_THRESHOLD_X100 7500 // 경보 임계값입니다. (75.00℃, 0.01℃ 단위)\n#define LED_PIN 5U // 경보 LED 의 논리 핀 번호입니다.\nvoid UART_Send(const char *s); // UART 문자열 전송 함수 선언입니다.\nvoid GPIO_Write(uint32_t pin, uint8_t state); // GPIO 출력 함수 선언입니다.\nvoid vTask_TempAlarm(void *pvParameters) // 온도 경보 태스크를 정의합니다.\n{ // 태스크 본문을 시작합니다.\n    const TickType_t xPeriod = pdMS_TO_TICKS(100U); // 100ms 주기를 틱으로 변환합니다.\n    TickType_t xLastWakeTime = xTaskGetTickCount(); // 정밀 주기용 기준 시각입니다.\n    for (;;) // 무한 루프를 시작합니다.\n    { // 루프 본문을 시작합니다.\n        int32_t lTempX100 = BMP280_ReadTempX100(); // 온도를 0.01℃ 단위로 읽습니다.\n        if (lTempX100 > TEMP_THRESHOLD_X100) // 임계값을 초과했는지 확인합니다.\n        { // 경보 발생 블록을 시작합니다.\n            GPIO_Write(LED_PIN, 1U); // 경보 LED 를 점등합니다.\n            UART_Send(\"ALARM\"); // 경보 메시지를 출력합니다.\n        } // 경보 발생 블록을 종료합니다.\n        else // 임계값 이하인 경우입니다.\n        { // 정상 상태 블록을 시작합니다.\n            GPIO_Write(LED_PIN, 0U); // 경보 LED 를 소등합니다.\n        } // 정상 상태 블록을 종료합니다.\n        vTaskDelayUntil(&xLastWakeTime, xPeriod); // 100ms 정밀 주기를 유지합니다.\n    } // 무한 루프를 종료합니다.\n} // 태스크 함수를 종료합니다.\n"
+    },
+    {
+      "path": "src/cli.c",
+      "content": "// cli.c — 시리얼 명령 파서 (교육용 예제)\n#include <stdint.h> // 고정 폭 정수 타입을 사용하기 위해 포함합니다.\nvoid UART_Send(const char *s); // UART 출력 함수 선언입니다.\nvoid cli_handle(uint8_t cmd) // 명령 처리 함수를 정의합니다.\n{ // 함수 본문을 시작합니다.\n    switch (cmd) // 수신한 명령 값으로 분기합니다.\n    { // switch 블록을 시작합니다.\n        case 0x01: // LED 켜기 명령인 경우입니다.\n            UART_Send(\"LED ON\"); // 응답을 출력합니다.\n            break; // 케이스를 종료합니다.\n        case 0x02: // LED 끄기 명령인 경우입니다.\n            UART_Send(\"LED OFF\"); // 응답을 출력합니다.\n            break; // 케이스를 종료합니다.\n        default: // 정의되지 않은 명령인 경우입니다.\n            UART_Send(\"UNKNOWN\"); // 오류 응답을 출력합니다.\n            break; // 기본 케이스를 종료합니다.\n    } // switch 블록을 종료합니다.\n} // 함수를 종료합니다.\n"
+    }
+  ],
+  "notes": {
+    "src/temp_alarm.c": "온도 임계값 판단 + LED/UART 경보 (vTaskDelayUntil 정밀 주기)",
+    "src/cli.c": "시리얼 명령 파서 — switch/default 구조"
+  },
+  "path": [
+    {
+      "id": "A1",
+      "icon": "🧭",
+      "t": "구조 파악",
+      "goal": "태스크 하나가 '읽기→판단→출력→지연' 순환임을 확인",
+      "concept": [
+        "태스크는 무한 루프 + vTaskDelayUntil 로 주기를 만든다.",
+        "임계값 판단은 비교 연산으로, 출력은 GPIO/UART 로 나간다."
+      ],
+      "reads": [
+        {
+          "file": "src/temp_alarm.c",
+          "line": 5,
+          "fn": "임계값 정의",
+          "why": "임계값을 0.01℃ 단위 정수로 두는 이유"
+        },
+        {
+          "file": "src/temp_alarm.c",
+          "line": 16,
+          "fn": "판단 분기",
+          "why": "초과 시에만 경보"
+        }
+      ],
+      "activity": "코딩 과제 미션 A1 로 임계값을 직접 채워 보세요."
+    },
+    {
+      "id": "A2",
+      "icon": "🔀",
+      "t": "명령 분기 (switch)",
+      "goal": "default 절로 미정의 명령을 처리하는 습관",
+      "concept": [
+        "switch 에 default 가 없으면 미정의 입력을 조용히 무시한다.",
+        "break 누락은 다음 case 로 떨어지는(fall-through) 버그를 만든다."
+      ],
+      "reads": [
+        {
+          "file": "src/cli.c",
+          "line": 14,
+          "fn": "default 절",
+          "why": "미정의 명령에 UNKNOWN 응답"
+        }
+      ],
+      "activity": "주관식 퀴즈에서 '미정의 명령 응답 문자열'을 회상해 보세요."
+    },
+    {
+      "id": "A3",
+      "icon": "✅",
+      "t": "검증과 확장",
+      "goal": "코드 → 컴파일 → 규칙 검사로 이어지는 습관",
+      "concept": [
+        "작성한 코드는 gcc -fsyntax-only 로 문법을, 임베디드 규칙으로 결함 패턴을 검사한다.",
+        "경보 지연(주기)이 요구사양(응답시간)을 만족하는지 RTA 로 확인한다."
+      ],
+      "reads": [
+        {
+          "file": "src/temp_alarm.c",
+          "line": 25,
+          "fn": "정밀 주기",
+          "why": "주기 드리프트 방지"
+        }
+      ],
+      "activity": "빌드 탭에서 통합 검사를 돌려 보세요."
+    }
+  ],
+  "quiz": [
+    {
+      "m": "A1",
+      "q": "임계값 TEMP_THRESHOLD_X100 이 7500 일 때, 섭씨 몇 도가 경보 기준인가요?",
+      "o": [
+        "75.00℃",
+        "7.5℃",
+        "750℃",
+        "0.75℃"
+      ],
+      "a": 0,
+      "w": "0.01℃ 단위이므로 7500 × 0.01 = 75.00℃ 입니다. float 대신 정수를 쓰는 이유는 코드에서 확인하세요."
+    },
+    {
+      "m": "A2",
+      "q": "cli.c 의 switch 에서 미정의 명령이 들어오면 출력되는 문자열은?",
+      "o": [
+        "UNKNOWN",
+        "ERROR",
+        "NONE",
+        "무응답"
+      ],
+      "a": 0,
+      "w": "default 절이 UNKNOWN 을 출력합니다. default 가 없었다면 조용히 무시됐을 것입니다."
+    },
+    {
+      "m": "A3",
+      "q": "vTaskDelay 대신 vTaskDelayUntil 을 쓰는 이유는?",
+      "o": [
+        "주기 드리프트 누적 방지",
+        "코드가 짧아서",
+        "메모리 절약",
+        "우선순위 상승"
+      ],
+      "a": 0,
+      "w": "vTaskDelay 는 실행 시간만큼 주기가 밀려 누적되고, vTaskDelayUntil 은 절대 시각 기준으로 주기를 유지합니다."
+    }
+  ],
+  "subquiz": [
+    {
+      "m": "A1",
+      "q": "임계값 초과 시 켜지는 GPIO 핀의 심볼은? (LED_PIN 등)",
+      "a": [
+        "led_pin",
+        "ledpin",
+        "led"
+      ],
+      "hint": "temp_alarm.c 의 #define LED_PIN 을 보세요."
+    },
+    {
+      "m": "A1",
+      "q": "경보 발생 시 UART 로 출력되는 문자열은?",
+      "a": [
+        "alarm"
+      ],
+      "hint": "UART_Send(...) 의 인자를 보세요."
+    },
+    {
+      "m": "A2",
+      "q": "미정의 명령에 대한 응답 문자열은?",
+      "a": [
+        "unknown"
+      ],
+      "hint": "default 절입니다."
+    }
+  ],
+  "missions": [
+    {
+      "id": 1,
+      "t": "경보 임계값 채우기",
+      "lv": "쉬움",
+      "learn": "임계값을 0.01℃ 단위 정수로 정의",
+      "marker": "/* ==== 여기에 코드를 작성하세요 ==== */",
+      "must": "7500",
+      "hint": "75.00℃ = 7500 (0.01℃ 단위)",
+      "template": "// 미션 A1: 경보 임계값(0.01℃ 단위)을 75.00℃ 로 채우세요.\n#include \"task.h\"\nint32_t BMP280_ReadTempX100(void);\nvoid UART_Send(const char *s);\n#define TEMP_THRESHOLD_X100  /* ==== 여기에 코드를 작성하세요 ==== */\nvoid vTask_TempAlarm(void *pvParameters)\n{\n    const TickType_t xPeriod = pdMS_TO_TICKS(100U);\n    TickType_t xLastWakeTime = xTaskGetTickCount();\n    for (;;)\n    {\n        int32_t lTempX100 = BMP280_ReadTempX100();\n        if (lTempX100 > TEMP_THRESHOLD_X100)\n        {\n            UART_Send(\"ALARM\");\n        }\n        vTaskDelayUntil(&xLastWakeTime, xPeriod);\n    }\n}\n",
+      "solution": "// 미션 A1: 경보 임계값(0.01℃ 단위)을 75.00℃ 로 채우세요.\n#include \"task.h\"\nint32_t BMP280_ReadTempX100(void);\nvoid UART_Send(const char *s);\n#define TEMP_THRESHOLD_X100  7500\nvoid vTask_TempAlarm(void *pvParameters)\n{\n    const TickType_t xPeriod = pdMS_TO_TICKS(100U);\n    TickType_t xLastWakeTime = xTaskGetTickCount();\n    for (;;)\n    {\n        int32_t lTempX100 = BMP280_ReadTempX100();\n        if (lTempX100 > TEMP_THRESHOLD_X100)\n        {\n            UART_Send(\"ALARM\");\n        }\n        vTaskDelayUntil(&xLastWakeTime, xPeriod);\n    }\n}\n"
+    },
+    {
+      "id": 2,
+      "t": "주기 지연 API 교정",
+      "lv": "중간",
+      "learn": "vTaskDelayUntil 로 정밀 주기 유지",
+      "marker": "        vTaskDelay(xPeriod); /* ==== 교체하세요 ==== */",
+      "must": "vTaskDelayUntil",
+      "hint": "vTaskDelayUntil(&xLastWakeTime, xPeriod) 로 교체하세요.",
+      "template": "// 미션 A2: 주기 태스크의 지연 API 를 교정하세요.\n#include \"task.h\"\nvoid vTask_Blink(void *pvParameters)\n{\n    const TickType_t xPeriod = pdMS_TO_TICKS(200U);\n    TickType_t xLastWakeTime = xTaskGetTickCount();\n    for (;;)\n    {\n        vTaskDelay(xPeriod); /* ==== 교체하세요 ==== */\n    }\n}\n",
+      "solution": "// 미션 A2: 주기 태스크의 지연 API 를 교정하세요.\n#include \"task.h\"\nvoid vTask_Blink(void *pvParameters)\n{\n    const TickType_t xPeriod = pdMS_TO_TICKS(200U);\n    TickType_t xLastWakeTime = xTaskGetTickCount();\n    for (;;)\n    {\n        vTaskDelayUntil(&xLastWakeTime, xPeriod);\n    }\n}\n"
+    }
+  ],
+  "rta": [
+    {
+      "name": "Sensor",
+      "T": 10,
+      "C": 0.8,
+      "p": 3,
+      "D": 10
+    },
+    {
+      "name": "Alarm",
+      "T": 100,
+      "C": 0.3,
+      "p": 2,
+      "D": 100
+    },
+    {
+      "name": "Console",
+      "T": 200,
+      "C": 1.0,
+      "p": 1,
+      "D": 200
+    }
+  ]
+}

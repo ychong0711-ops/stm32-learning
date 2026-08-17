@@ -1,0 +1,2 @@
+commented/bsp/bsp_uart.c:9:6:UART_Init	48	static
+commented/bsp/bsp_uart.c:35:5:_write	8	static

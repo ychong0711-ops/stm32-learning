@@ -1,0 +1,2 @@
+commented/bsp/system_stm32.c:7:6:SystemClock_Config	104	static
+commented/bsp/system_stm32.c:34:6:NVIC_PriorityGroupConfig	0	static

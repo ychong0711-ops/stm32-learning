@@ -1,0 +1,2 @@
+bmp280_calc.c:14:9:bmp280_compensate	0	static
+bmp280_calc.c:24:10:can_assemble_le	0	static

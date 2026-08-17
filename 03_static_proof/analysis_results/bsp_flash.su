@@ -1,0 +1,3 @@
+commented/bsp/bsp_flash.c:7:6:Flash_Init	0	static
+commented/bsp/bsp_flash.c:12:12:Flash_EraseSector	32	static
+commented/bsp/bsp_flash.c:36:12:Flash_ProgramWord	8	static

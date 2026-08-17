@@ -1,0 +1,2 @@
+commented/bsp/bsp_adc.c:9:6:ADC_Init	40	static
+commented/bsp/bsp_adc.c:37:10:ADC_ReadChannel	32	static

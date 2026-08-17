@@ -1,0 +1,7 @@
+commented_build/main_build.c:152:6:vTask_Watchdog	32	static
+commented_build/main_build.c:190:6:vTask_CAN_Rx	48	static
+commented_build/main_build.c:227:6:vTask_Sensor	32	static
+commented_build/main_build.c:255:6:vTask_Actuator	24	static
+commented_build/main_build.c:372:6:vTask_Debug	40	static
+commented_build/main_build.c:428:6:vTask_Firmware	8	static
+commented_build/main_build.c:480:5:main	24	static

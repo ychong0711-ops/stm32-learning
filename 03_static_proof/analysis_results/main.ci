@@ -1,0 +1,114 @@
+graph: { title: "commented_build/main_build.c"
+node: { title: "vTask_Watchdog" label: "vTask_Watchdog\ncommented_build/main_build.c:152:6\n32 bytes (static)" }
+node: { title: "xTaskGetTickCount" label: "xTaskGetTickCount\nstubs/task.h:14:12" shape : ellipse }
+edge: { sourcename: "vTask_Watchdog" targetname: "xTaskGetTickCount" label: "commented_build/main_build.c:160:32" }
+node: { title: "IWDG_ReloadCounter" label: "IWDG_ReloadCounter\ncommented/bsp/bsp_iwdg.h:9:6" shape : ellipse }
+edge: { sourcename: "vTask_Watchdog" targetname: "IWDG_ReloadCounter" label: "commented_build/main_build.c:166:13" }
+node: { title: "vTaskDelayUntil" label: "vTaskDelayUntil\nstubs/task.h:9:6" shape : ellipse }
+edge: { sourcename: "vTask_Watchdog" targetname: "vTaskDelayUntil" label: "commented_build/main_build.c:186:9" }
+node: { title: "vTask_CAN_Rx" label: "vTask_CAN_Rx\ncommented_build/main_build.c:190:6\n48 bytes (static)" }
+node: { title: "CAN_Init" label: "CAN_Init\ncommented/bsp/bsp_can.h:17:12" shape : ellipse }
+edge: { sourcename: "vTask_CAN_Rx" targetname: "CAN_Init" label: "commented_build/main_build.c:197:5" }
+node: { title: "CAN_FilterConfig" label: "CAN_FilterConfig\ncommented/bsp/bsp_can.h:18:6" shape : ellipse }
+edge: { sourcename: "vTask_CAN_Rx" targetname: "CAN_FilterConfig" label: "commented_build/main_build.c:198:5" }
+node: { title: "CAN_Receive" label: "CAN_Receive\ncommented/bsp/bsp_can.h:19:12" shape : ellipse }
+edge: { sourcename: "vTask_CAN_Rx" targetname: "CAN_Receive" label: "commented_build/main_build.c:204:19" }
+node: { title: "xSemaphoreTake" label: "xSemaphoreTake\nstubs/semphr.h:7:12" shape : ellipse }
+edge: { sourcename: "vTask_CAN_Rx" targetname: "xSemaphoreTake" label: "commented_build/main_build.c:358:9" }
+node: { title: "PWM_SetDuty" label: "PWM_SetDuty\ncommented/bsp/bsp_pwm.h:11:6" shape : ellipse }
+edge: { sourcename: "vTask_CAN_Rx" targetname: "PWM_SetDuty" label: "commented_build/main_build.c:360:9" }
+node: { title: "GPIO_Write" label: "GPIO_Write\ncommented/bsp/bsp_gpio.h:14:6" shape : ellipse }
+edge: { sourcename: "vTask_CAN_Rx" targetname: "GPIO_Write" label: "commented_build/main_build.c:361:9" }
+node: { title: "xSemaphoreGive" label: "xSemaphoreGive\nstubs/semphr.h:8:12" shape : ellipse }
+edge: { sourcename: "vTask_CAN_Rx" targetname: "xSemaphoreGive" label: "commented_build/main_build.c:362:9" }
+edge: { sourcename: "vTask_CAN_Rx" targetname: "PWM_SetDuty" label: "commented_build/main_build.c:367:9" }
+edge: { sourcename: "vTask_CAN_Rx" targetname: "GPIO_Write" label: "commented_build/main_build.c:368:9" }
+node: { title: "xQueueSend" label: "xQueueSend\nstubs/queue.h:6:12" shape : ellipse }
+edge: { sourcename: "vTask_CAN_Rx" targetname: "xQueueSend" label: "commented_build/main_build.c:216:25" }
+node: { title: "vTask_Sensor" label: "vTask_Sensor\ncommented_build/main_build.c:227:6\n32 bytes (static)" }
+edge: { sourcename: "vTask_Sensor" targetname: "xTaskGetTickCount" label: "commented_build/main_build.c:232:32" }
+node: { title: "ADC_Init" label: "ADC_Init\ncommented/bsp/bsp_adc.h:11:6" shape : ellipse }
+edge: { sourcename: "vTask_Sensor" targetname: "ADC_Init" label: "commented_build/main_build.c:234:5" }
+node: { title: "BMP280_Init" label: "BMP280_Init\ncommented/bsp/sensor_bmp280.h:10:6" shape : ellipse }
+edge: { sourcename: "vTask_Sensor" targetname: "BMP280_Init" label: "commented_build/main_build.c:235:5" }
+node: { title: "ADC_ReadChannel" label: "ADC_ReadChannel\ncommented/bsp/bsp_adc.h:12:10" shape : ellipse }
+edge: { sourcename: "vTask_Sensor" targetname: "ADC_ReadChannel" label: "commented_build/main_build.c:241:27" }
+node: { title: "BMP280_ReadTemperature" label: "BMP280_ReadTemperature\ncommented/bsp/sensor_bmp280.h:11:7" shape : ellipse }
+edge: { sourcename: "vTask_Sensor" targetname: "BMP280_ReadTemperature" label: "commented_build/main_build.c:242:35" }
+edge: { sourcename: "vTask_Sensor" targetname: "ADC_ReadChannel" label: "commented_build/main_build.c:243:32" }
+edge: { sourcename: "vTask_Sensor" targetname: "xTaskGetTickCount" label: "commented_build/main_build.c:244:33" }
+edge: { sourcename: "vTask_Sensor" targetname: "xQueueSend" label: "commented_build/main_build.c:246:13" }
+edge: { sourcename: "vTask_Sensor" targetname: "vTaskDelayUntil" label: "commented_build/main_build.c:251:9" }
+node: { title: "vTask_Actuator" label: "vTask_Actuator\ncommented_build/main_build.c:255:6\n24 bytes (static)" }
+node: { title: "PWM_Init" label: "PWM_Init\ncommented/bsp/bsp_pwm.h:10:6" shape : ellipse }
+edge: { sourcename: "vTask_Actuator" targetname: "PWM_Init" label: "commented_build/main_build.c:262:5" }
+node: { title: "GPIO_Init" label: "GPIO_Init\ncommented/bsp/bsp_gpio.h:13:6" shape : ellipse }
+edge: { sourcename: "vTask_Actuator" targetname: "GPIO_Init" label: "commented_build/main_build.c:263:5" }
+edge: { sourcename: "vTask_Actuator" targetname: "PWM_SetDuty" label: "commented_build/main_build.c:264:5" }
+edge: { sourcename: "vTask_Actuator" targetname: "GPIO_Write" label: "commented_build/main_build.c:265:5" }
+node: { title: "xQueueReceive" label: "xQueueReceive\nstubs/queue.h:7:12" shape : ellipse }
+edge: { sourcename: "vTask_Actuator" targetname: "xQueueReceive" label: "commented_build/main_build.c:271:19" }
+edge: { sourcename: "vTask_Actuator" targetname: "xSemaphoreTake" label: "commented_build/main_build.c:274:17" }
+edge: { sourcename: "vTask_Actuator" targetname: "PWM_SetDuty" label: "commented_build/main_build.c:333:13" }
+edge: { sourcename: "vTask_Actuator" targetname: "GPIO_Write" label: "commented_build/main_build.c:337:13" }
+edge: { sourcename: "vTask_Actuator" targetname: "PWM_SetDuty" label: "commented_build/main_build.c:341:13" }
+edge: { sourcename: "vTask_Actuator" targetname: "GPIO_Write" label: "commented_build/main_build.c:342:13" }
+edge: { sourcename: "vTask_Actuator" targetname: "xSemaphoreGive" label: "commented_build/main_build.c:277:17" }
+node: { title: "vTask_Debug" label: "vTask_Debug\ncommented_build/main_build.c:372:6\n40 bytes (static)" }
+node: { title: "UART_Init" label: "UART_Init\ncommented/bsp/bsp_uart.h:10:6" shape : ellipse }
+edge: { sourcename: "vTask_Debug" targetname: "UART_Init" label: "commented_build/main_build.c:379:5" }
+edge: { sourcename: "vTask_Debug" targetname: "xQueueReceive" label: "commented_build/main_build.c:385:19" }
+edge: { sourcename: "vTask_Debug" targetname: "xSemaphoreTake" label: "commented_build/main_build.c:388:17" }
+node: { title: "printf" label: "printf\n/usr/include/newlib/stdio.h:206:5" shape : ellipse }
+edge: { sourcename: "vTask_Debug" targetname: "printf" label: "commented_build/main_build.c:394:17" }
+node: { title: "__aeabi_fmul" label: "__aeabi_fmul\n<built-in>" shape : ellipse }
+edge: { sourcename: "vTask_Debug" targetname: "__aeabi_fmul" }
+node: { title: "__aeabi_f2iz" label: "__aeabi_f2iz\n<built-in>" shape : ellipse }
+edge: { sourcename: "vTask_Debug" targetname: "__aeabi_f2iz" }
+edge: { sourcename: "vTask_Debug" targetname: "xSemaphoreGive" label: "commented_build/main_build.c:399:17" }
+node: { title: "vTaskDelay" label: "vTaskDelay\nstubs/task.h:8:6" shape : ellipse }
+edge: { sourcename: "vTask_Debug" targetname: "vTaskDelay" label: "commented_build/main_build.c:407:9" }
+node: { title: "vTask_Firmware" label: "vTask_Firmware\ncommented_build/main_build.c:428:6\n8 bytes (static)" }
+node: { title: "Flash_Init" label: "Flash_Init\ncommented/bsp/bsp_flash.h:9:6" shape : ellipse }
+edge: { sourcename: "vTask_Firmware" targetname: "Flash_Init" label: "commented_build/main_build.c:434:5" }
+node: { title: "Bootloader_Init" label: "Bootloader_Init\ncommented/bsp/bootloader.h:17:6" shape : ellipse }
+edge: { sourcename: "vTask_Firmware" targetname: "Bootloader_Init" label: "commented_build/main_build.c:435:5" }
+node: { title: "Bootloader_CheckUpdateRequest" label: "Bootloader_CheckUpdateRequest\ncommented/bsp/bootloader.h:18:17" shape : ellipse }
+edge: { sourcename: "vTask_Firmware" targetname: "Bootloader_CheckUpdateRequest" label: "commented_build/main_build.c:439:18" }
+edge: { sourcename: "vTask_Firmware" targetname: "xSemaphoreTake" label: "commented_build/main_build.c:445:17" }
+edge: { sourcename: "vTask_Firmware" targetname: "PWM_SetDuty" label: "commented_build/main_build.c:447:17" }
+edge: { sourcename: "vTask_Firmware" targetname: "GPIO_Write" label: "commented_build/main_build.c:448:17" }
+edge: { sourcename: "vTask_Firmware" targetname: "xSemaphoreGive" label: "commented_build/main_build.c:449:17" }
+node: { title: "vTaskSuspend" label: "vTaskSuspend\nstubs/task.h:10:6" shape : ellipse }
+edge: { sourcename: "vTask_Firmware" targetname: "vTaskSuspend" label: "commented_build/main_build.c:454:17" }
+edge: { sourcename: "vTask_Firmware" targetname: "vTaskSuspend" label: "commented_build/main_build.c:458:17" }
+edge: { sourcename: "vTask_Firmware" targetname: "vTaskSuspend" label: "commented_build/main_build.c:462:17" }
+edge: { sourcename: "vTask_Firmware" targetname: "vTaskSuspend" label: "commented_build/main_build.c:466:17" }
+node: { title: "vTaskSuspendAll" label: "vTaskSuspendAll\nstubs/task.h:11:6" shape : ellipse }
+edge: { sourcename: "vTask_Firmware" targetname: "vTaskSuspendAll" label: "commented_build/main_build.c:470:13" }
+edge: { sourcename: "vTask_Firmware" targetname: "IWDG_ReloadCounter" label: "commented_build/main_build.c:418:5" }
+node: { title: "Bootloader_FlashNewFirmware" label: "Bootloader_FlashNewFirmware\ncommented/bsp/bootloader.h:21:6" shape : ellipse }
+edge: { sourcename: "vTask_Firmware" targetname: "Bootloader_FlashNewFirmware" label: "commented_build/main_build.c:423:5" }
+edge: { sourcename: "vTask_Firmware" targetname: "IWDG_ReloadCounter" label: "commented_build/main_build.c:425:5" }
+edge: { sourcename: "vTask_Firmware" targetname: "vTaskDelay" label: "commented_build/main_build.c:476:9" }
+node: { title: "main" label: "main\ncommented_build/main_build.c:480:5\n24 bytes (static)" }
+node: { title: "SystemClock_Config" label: "SystemClock_Config\ncommented/bsp/system_stm32.h:8:6" shape : ellipse }
+edge: { sourcename: "main" targetname: "SystemClock_Config" label: "commented_build/main_build.c:484:5" }
+node: { title: "NVIC_PriorityGroupConfig" label: "NVIC_PriorityGroupConfig\ncommented/bsp/system_stm32.h:9:6" shape : ellipse }
+edge: { sourcename: "main" targetname: "NVIC_PriorityGroupConfig" label: "commented_build/main_build.c:485:5" }
+node: { title: "xQueueCreate" label: "xQueueCreate\nstubs/queue.h:5:15" shape : ellipse }
+edge: { sourcename: "main" targetname: "xQueueCreate" label: "commented_build/main_build.c:487:26" }
+edge: { sourcename: "main" targetname: "xQueueCreate" label: "commented_build/main_build.c:488:26" }
+node: { title: "xSemaphoreCreateMutex" label: "xSemaphoreCreateMutex\nstubs/semphr.h:5:19" shape : ellipse }
+edge: { sourcename: "main" targetname: "xSemaphoreCreateMutex" label: "commented_build/main_build.c:489:27" }
+edge: { sourcename: "main" targetname: "xSemaphoreCreateMutex" label: "commented_build/main_build.c:490:20" }
+node: { title: "xTaskCreate" label: "xTaskCreate\nstubs/task.h:5:12" shape : ellipse }
+edge: { sourcename: "main" targetname: "xTaskCreate" label: "commented_build/main_build.c:501:21" }
+edge: { sourcename: "main" targetname: "xTaskCreate" label: "commented_build/main_build.c:503:21" }
+edge: { sourcename: "main" targetname: "xTaskCreate" label: "commented_build/main_build.c:505:21" }
+edge: { sourcename: "main" targetname: "xTaskCreate" label: "commented_build/main_build.c:507:21" }
+edge: { sourcename: "main" targetname: "xTaskCreate" label: "commented_build/main_build.c:509:21" }
+edge: { sourcename: "main" targetname: "xTaskCreate" label: "commented_build/main_build.c:511:21" }
+node: { title: "vTaskStartScheduler" label: "vTaskStartScheduler\nstubs/task.h:13:6" shape : ellipse }
+edge: { sourcename: "main" targetname: "vTaskStartScheduler" label: "commented_build/main_build.c:514:5" }
+}

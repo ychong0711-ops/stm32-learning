@@ -1,0 +1,4 @@
+commented/bsp/bsp_iwdg.c:9:6:IWDG_Init	0	static
+commented/bsp/bsp_iwdg.c:60:6:IWDG_ReloadCounter	0	static
+commented/bsp/bsp_iwdg.c:65:10:IWDG_GetResetFlags	0	static
+commented/bsp/bsp_iwdg.c:70:6:IWDG_ClearResetFlags	0	static

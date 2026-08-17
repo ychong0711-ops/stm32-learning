@@ -1,0 +1,5 @@
+commented/bsp/bootloader.c:19:6:Bootloader_Init	8	static
+commented/bsp/bootloader.c:25:17:Bootloader_CheckUpdateRequest	0	static
+commented/bsp/bootloader.c:31:6:Bootloader_SetUpdateRequest	0	static
+commented/bsp/bootloader.c:37:6:Bootloader_ClearUpdateRequest	0	static
+commented/bsp/bootloader.c:43:6:Bootloader_FlashNewFirmware	8	static
