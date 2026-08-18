@@ -20,24 +20,36 @@
 | `bsp_uart.h/.c` | USART2 + printf 리타겟 | `UART_Init` |
 | `bsp_iwdg.h/.c` | 독립 워치독 | `IWDG_Init`, `IWDG_ReloadCounter`, 리셋원인 |
 | `bsp_flash.h/.c` | 내부 플래시 삭제/기록 | `Flash_Init`, `Flash_EraseSector`, `Flash_ProgramWord` |
-| `bootloader.h/.c` | 업데이트 요청/플래싱 | `Bootloader_Init`, `Bootloader_CheckUpdateRequest`, `Bootloader_FlashNewFirmware` |
+| `flash_map.h` | 플래시 영역 배치 · 부트 제어 블록 정의 | `BOOT_/APP_/STAGE_REGION_*`, `BootCtrl_t` |
+| `fw_image.h/.c` | 이미지 헤더 · CRC-32 검증 | `FwImage_Crc32`, `FwImage_CheckHeader`, `FwImage_Verify` |
+| `bootloader.h/.c` | 스테이징 기록 · 설치 요청 (앱 쪽) | `Bootloader_BeginStaging`, `WriteChunk`, `FinishStaging`, `VerifyStaged`, `RequestInstallAndReset` |
+| `bsp_baremetal.h` | 부트로더용 최소 타입 정의 (FreeRTOS 대체) | `BaseType_t`, `pdPASS` 등 |
 | `sensor_bmp280.h/.c` | BMP280 I2C 온도 | `BMP280_Init`, `BMP280_ReadTemperature` |
 | `system_stm32.h/.c` | 180MHz 클록, NVIC 그룹 | `SystemClock_Config`, `NVIC_PriorityGroupConfig` |
 
 ---
 
-## 2. main_fixed.c 통합 시 수정해야 할 2곳 (중요)
+## 2. main_fixed.c 의 중복 typedef (2026-08 처리 완료)
 
-BSP 헤더에서 타입을 정의하므로, main_fixed.c 의 **중복 typedef 는 삭제**해야 합니다.
-(삭제하지 않으면 "redefinition" 컴파일 오류 발생)
+> **이 절은 이제 기록용입니다.** 아래 두 typedef 는 main_fixed.c 에서 이미
+> 삭제했고, 자리에는 "어느 헤더가 정의하는지" 설명 주석이 들어가 있습니다.
+> 지금은 `make` 만 하면 그대로 빌드됩니다.
+
+BSP 헤더에서 타입을 정의하므로, main_fixed.c 에 같은 타입이 또 있으면
+"redefinition" 컴파일 오류가 났습니다. (익명 struct/enum 의 typedef 재정의는
+C11 에서도 허용되지 않습니다)
 
 ```c
-// (삭제 대상 1) main_fixed.c 의 CAN 메시지 구조체 → bsp_can.h 로 이동됨
+// (삭제됨 1) main_fixed.c 의 CAN 메시지 구조체 → bsp_can.h 가 유일하게 정의
 typedef struct { uint32_t ID; uint8_t DLC; uint8_t data[8]; } CAN_Message_t;
 
-// (삭제 대상 2) main_fixed.c 의 펌웨어 상태 열거형 → bootloader.h 로 이동됨
+// (삭제됨 2) main_fixed.c 의 펌웨어 상태 열거형 → bootloader.h 가 유일하게 정의
 typedef enum { UPDATE_NONE = 0, UPDATE_AVAILABLE } FirmwareState_t;
 ```
+
+`FirmwareState_t` 는 값 구성은 그대로지만 의미가 정밀해졌습니다.
+스테이징 패턴에서 `UPDATE_AVAILABLE` 은 "업데이트 요청이 있다"가 아니라
+**"검증을 통과한 스테이징 이미지가 있어 설치할 수 있다"** 를 뜻합니다.
 
 그리고 개별 `#include "bsp_xxx.h"` 들은 아래 한 줄로 대체 가능합니다.
 
@@ -128,24 +140,44 @@ int main(void)
 
 ## 5. 빌드 및 동작 확인 순서
 
-1. STM32CubeIDE 프로젝트 생성 (보드: NUCLEO-F446RE, HAL 사용)
-2. FreeRTOS 를 CMSIS-OS 없이 **native 소스**로 추가 (혹은 CubeMX 의 FreeRTOS 미들웨어 사용)
-3. `bsp/` 폴더와 `main_fixed.c` 를 프로젝트에 추가
-4. 위 "2절"의 typedef 2개 삭제 + `IWDG_Init` 호출 추가
-5. `FreeRTOSConfig.h` 를 "3절" 기준으로 설정
-6. 빌드 → 플래시 → 시리얼 터미널(115200)에서 디버그 JSON 확인
-7. CAN 버스(USB-CAN)로 `0x200`(스로틀), `0x201`(팬), `0x123`(긴급정지) 전송 테스트
+> **2026-08 갱신**: 이제 IDE 없이 `make` 로 빌드됩니다. 아래 1~5 단계(수동
+> 프로젝트 구성)는 더 이상 필요 없습니다. 자세한 내용은 `../BUILD.md` 참조.
+
+```bash
+cd 02_source_code
+make deps     # ST HAL + FreeRTOS 커널 내려받기 (최초 1회)
+make          # 부트로더 + 앱 + 갱신 이미지
+make size     # 영역별 사용량 확인
+```
+
+굽고 확인하기:
+
+1. `make combined && make flash-combined` — 부트로더+앱 합본을 `0x08000000` 에 기록
+2. 시리얼 터미널(115200)에서 디버그 JSON 확인
+3. CAN 버스(USB-CAN)로 `0x200`(스로틀), `0x201`(팬), `0x123`(긴급정지) 전송 테스트
+
+STM32CubeIDE 를 계속 쓰고 싶다면, 프로젝트에 `bsp/` · `app/` · `bootloader/` ·
+`startup/` · `system/` 을 추가하고 `linker/` 의 스크립트를 지정하면 됩니다.
+`FreeRTOSConfig.h` 는 이제 `app/FreeRTOSConfig.h` 에 실물이 있습니다
+(아래 "3절"의 예시가 아니라 그 파일이 빌드에 쓰입니다).
 
 ---
 
 ## 6. 현재 골격의 한계 (실측 전 반드시 확인)
+
+> **2026-08 해소된 항목**: startup 파일 · 링커 스크립트 · Makefile 부재,
+> `HAL_Init()` 미호출, SysTick/IRQ 진입점 없음 — 전부 채워져서 실제로 링크됩니다.
+> 애플리케이션이 자기 자신을 덮어쓰던 셀프 플래싱도 스테이징 방식으로 바뀌었습니다.
+> (`../docs/docs_bootloader_design.md`)
 
 | 항목 | 상태 | 보완 방법 |
 |---|---|---|
 | CAN 보레이트 타이밍 | 125k/250k/500k/1M 하드코딩 | 오실로스코프로 비트타임 검증 |
 | IWDG LSI 주파수 | 32kHz 가정 (실제 17~47kHz) | 타임아웃 실측(E2 실험) 후 보정 |
 | BMP280 보정 계수 | 온도만 구현 | 필요 시 압력 보정 추가 |
-| 부트로더 이미지 소스 | 더미 배열 | UART/외부 플래시 전송 경로 구현 |
+| 펌웨어 수신 경로 | 스테이징 API 만 존재 | CAN 분할/재전송/흐름제어 프로토콜 구현 |
+| 이미지 서명 | CRC-32 만 (우연한 손상 탐지) | 악의적 변조 방어가 필요하면 ECDSA 서명 추가 |
+| A/B 롤백 | 없음 (실패 시 기존 앱 유지) | 섹터 6~7(256KB) 이 비어 있어 확장 가능 |
 | printf | 블로킹 전송 | 실측(CPU 부하) 후 인터럽트/DMA 전환 검토 |
 | ADC 샘플링 | 480 사이클 (최대치) | 센서 특성에 맞게 조정 |
 
