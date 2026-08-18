@@ -19,8 +19,20 @@ void SystemClock_Config(void)  // 시스템 클록 설정 함수를 정의합니
     RCC_OscInitStruct.PLL.PLLM = 8;  // PLLM=8 → VCO 입력 1MHz (8MHz/8) 를 만듭니다.
     RCC_OscInitStruct.PLL.PLLN = 180;  // PLLN=180 → VCO 180MHz 를 만듭니다.
     RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;  // PLLP=/2 → SYSCLK 180MHz 를 만듭니다.
-    RCC_OscInitStruct.PLL.PLLQ = 5;  // PLLQ=5 → 48MHz 클록을 위한 분주입니다. (필요 시 조정)
+    RCC_OscInitStruct.PLL.PLLQ = 5;  // PLLQ=5 → PLL48CLK 36MHz(=180/5)입니다. (2차 수정: 주석 정정 — 이 클록 플랜(180MHz)에서는 48MHz를 만들 수 없음(180/48=3.75). USB/SDIO 사용 시 클록 재구성 필요, 본 프로젝트는 미사용)
     (void)HAL_RCC_OscConfig(&RCC_OscInitStruct);  // 오실레이터/PLL 설정을 적용합니다.
+
+    // [필수] 오버드라이브 모드를 활성화합니다.
+    // RM0390 에 따르면 전압 스케일 1(VOS=0b11) 에서 보장되는 최대 HCLK 는 168MHz 이며,
+    // 180MHz 는 오버드라이브 모드를 켜야만 규격 안에 들어옵니다. 이 호출이 없으면
+    // PLL 은 180MHz 를 만들어 내지만 전압 레귤레이터가 그 주파수를 뒷받침하지 못해
+    // 데이터시트 규격을 벗어난 상태로 동작합니다. (상온에서는 대체로 돌아가지만
+    // 고온/저전압에서 간헐적 오동작이나 플래시 액세스 오류로 나타납니다)
+    //
+    // 호출 위치가 중요합니다. RM0390 의 진입 절차는 "시스템 클록이 HSI/HSE 인 동안
+    // PLL 을 켠 뒤, 오버드라이브를 켜고, 그 다음에 PLL 로 전환"입니다. 따라서
+    // HAL_RCC_OscConfig() 뒤, HAL_RCC_ClockConfig() 앞이라는 이 자리여야 합니다.
+    (void)HAL_PWREx_EnableOverDrive();  // 180MHz 동작을 위해 오버드라이브 모드를 켭니다.
 
     RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK |  // 설정할 클록 종류를 선택합니다. (HCLK, SYSCLK)
                                   RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;  // 설정할 클록 종류를 선택합니다. (PCLK1, PCLK2)

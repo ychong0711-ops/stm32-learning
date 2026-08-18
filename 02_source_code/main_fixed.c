@@ -15,16 +15,34 @@
 // - 수정: 긴급 정지는 CAN 수신 태스크에서 큐를 거치지 않고 즉시 안전 상태를
 // 적용(prvEmergencyStop). 뮤텍스는 portMAX_DELAY로 획득을 보장.
 // --------------------------------------------------------------------------
+// [2차 안전 수정 (2026-08-18, 자체 리뷰 반영)] — 발견~조치 내역은 README §8 참조
+// - [2-1] IWDG 실제 활성화: 기존(초기 커밋)에는 IWDG_Init() 호출이 어디에도 없어
+//   워치독 하드웨어가 켜지지 않았고 모든 피드가 no-op였음. 이는 통합 계층(PR #1)에서
+//   main()의 IWDG_Init(4000ms)로 이미 해결되었으므로, 본 2차 수정에서는 별도 호출을
+//   추가하지 않는다(스테이징 섹터 삭제 2초 마진을 고려한 4초 타임아웃을 그대로 사용).
+// - [2-2] CAN 수신 lost-wakeup 제거(bsp_can.c): 알림이 바이너리 세마포어(최대 1)인데
+//   링 버퍼는 16칸이라, 버스트 수신 시 링에 메시지가 남아 있어도 세마포어 토큰
+//   소진으로 태스크가 블록할 수 있었음. 세마포어 대기 전 링 잔여를 먼저 확인.
+// - [2-3] 긴급 정지 래치: prvEmergencyStop() 후 안전 상태를 래치하고, 시스템
+//   리셋 전까지 큐에 남은 과거 명령(CMD_THROTTLE 등)이 액추에이터를 재가동하는
+//   것을 차단. 유실 방지(수정 2)에 이어 안전 상태 "유지"를 보장.
+// - [2-4] 센서 큐 keep-latest 전략: 생산 100Hz 대비 디버그 소비 ~18Hz 미스매치로
+//   큐(16)가 부팅 직후 만석되고 drop 카운터가 폭주하던 구조적 문제를, 길이 1 +
+//   xQueueOverwrite(최신값 유지)로 해결.
+// - [2-5] 우선순위 분리: Sensor(10ms)=4 > Actuator(20ms)=3으로 RMS 정합성 확보.
+//   동일 우선순위 타임슬라이싱 간섭이 RTA에 모델링되지 않는 모호함 제거.
+// --------------------------------------------------------------------------
 // BSP 함수들(CAN_Receive, ADC_ReadChannel, PWM_SetDuty 등)은 실제 드라이버 함수가
 // 존재한다고 가정한 코드입니다.
 // 
 
+#include "stm32f4xx_hal.h" // HAL_Init() 등 HAL 공통 API를 사용하기 위해 포함합니다. (통합 계층 보강)
 #include "FreeRTOS.h" // FreeRTOS 커널 API와 자료형을 사용하기 위해 포함합니다.
 #include "task.h" // 태스크 생성, 삭제, 지연, 스케줄링 API를 사용하기 위해 포함합니다.
 #include "queue.h" // 태스크 간 데이터 전달을 위한 큐 API를 사용하기 위해 포함합니다.
 #include "semphr.h" // 세마포어와 뮤텍스 API를 사용하기 위해 포함합니다.
 #include <stdint.h> // uint8_t, uint16_t, uint32_t, int32_t 등 고정 폭 정수 타입을 사용하기 위해 포함합니다.
-#include <stdio.h> // printf 기반 UART 디버깅 출력을 사용하기 위해 포함합니다.
+#include <stdio.h> // printf 기반 UART 디버깅 출력을 사용하기 위해 포함합니다. (구현은 app/tiny_printf.c)
 #include "bsp_can.h" // CAN 초기화 및 수신 함수가 선언되어 있다고 가정하고 포함합니다.
 #include "bsp_adc.h" // ADC 초기화 및 채널 읽기 함수가 선언되어 있다고 가정하고 포함합니다.
 #include "bsp_pwm.h" // PWM 초기화 및 듀티 설정 함수가 선언되어 있다고 가정하고 포함합니다.
@@ -45,13 +63,13 @@
 
 #define TASK_WATCHDOG_PRIORITY 6U // 워치독 태스크는 최상위 우선순위로 두어 항상 실행되도록 합니다.
 #define TASK_CAN_PRIORITY 5U // CAN 수신 태스크는 두 번째로 높은 우선순위로 설정합니다.
-#define TASK_SENSOR_PRIORITY 3U // 센서 태스크는 중간 우선순위로 설정합니다.
+#define TASK_SENSOR_PRIORITY 4U // 센서 태스크 우선순위. (2차 수정) Actuator(20ms)보다 주기가 짧으므로 RMS에 따라 한 단계 위에 배치합니다.
 #define TASK_ACTUATOR_PRIORITY 3U // 액추에이터 태스크는 중간 우선순위로 설정합니다.
 #define TASK_DEBUG_PRIORITY 2U // 디버깅 태스크는 낮은 우선순위로 설정합니다.
 #define TASK_FIRMWARE_PRIORITY 1U // 펌웨어 업데이트 태스크는 가장 낮은 우선순위로 설정합니다.
 
 #define ACTUATOR_CMD_QUEUE_LEN 16U // 액추에이터 명령 큐의 최대 깊이를 정의합니다.
-#define SENSOR_DATA_QUEUE_LEN 16U // 센서 데이터 큐의 최대 깊이를 정의합니다.
+#define SENSOR_DATA_QUEUE_LEN 1U // 센서 데이터 큐 길이. (2차 수정) keep-latest 전략으로 길이 1 + xQueueOverwrite를 사용해 항상 최신값만 유지합니다.
 
 #define WATCHDOG_CHECK_PERIOD_MS 100U // 워치독 태스크의 하트비트 검사 주기를 100ms로 정의합니다.
 #define CAN_RX_TIMEOUT_MS 10U // CAN 수신 타임아웃을 10ms로 정의합니다.
@@ -74,14 +92,14 @@
 #define CAN_SPEED_500KBPS 500000U // CAN 통신 속도를 500kbps로 정의합니다.
 
 // IWDG 리로드 값(타임아웃)은 워치독 검사 주기(100ms)보다 충분히 크게 설정해야 합니다.
-// 예: IWDG 프리스케일러/리로드를 조합하여 약 1초로 설정하는 것을 권장합니다. 
+// 실제 활성화는 통합 계층(PR #1)에서 main()의 IWDG_Init(4000ms)로 수행합니다.
+// 참고: LSI(32kHz 공칭)는 칩별 편차가 있어 실제 타임아웃은 칩에 따라 달라질 수 있습니다.
 
-typedef struct // CAN 메시지 구조체 정의를 시작합니다.
-{ // CAN 메시지 멤버 변수 선언을 시작합니다.
-    uint32_t ID; // CAN 메시지 식별자를 저장합니다.
-    uint8_t DLC; // CAN 데이터 길이 코드를 저장합니다.
-    uint8_t data[8]; // CAN 데이터 페이로드 최대 8바이트를 저장합니다.
-} CAN_Message_t; // CAN 메시지 구조체 타입 이름을 CAN_Message_t로 정의합니다.
+// [통합 시 삭제됨] CAN_Message_t 는 bsp_can.h 가 정의합니다.
+// 원래 이 자리에는 동일한 내용의 typedef 가 중복되어 있었습니다. 익명 구조체
+// typedef 는 두 번 쓰면 "서로 다른 타입"이 되어 C11 에서도 재정의 오류가 나므로,
+// 실제 빌드에서는 BSP 헤더의 정의 하나만 남겨야 합니다.
+// (참고: 필드 구성은 { uint32_t ID; uint8_t DLC; uint8_t data[8]; } 로 동일합니다) 
 
 typedef struct // 센서 데이터 구조체 정의를 시작합니다.
 { // 센서 데이터 멤버 변수 선언을 시작합니다.
@@ -107,11 +125,10 @@ typedef struct // 액추에이터 명령 구조체 정의를 시작합니다.
     uint32_t sourceCanId; // 명령을 발생시킨 CAN ID를 저장합니다.
 } ActuatorCmd_t; // 액추에이터 명령 구조체 타입 이름을 ActuatorCmd_t로 정의합니다.
 
-typedef enum // 펌웨어 상태 열거형 정의를 시작합니다.
-{ // 펌웨어 상태 값 선언을 시작합니다.
-    UPDATE_NONE = 0, // 펌웨어 업데이트 요청이 없는 상태를 의미합니다.
-    UPDATE_AVAILABLE // 펌웨어 업데이트 요청이 존재하는 상태를 의미합니다.
-} FirmwareState_t; // 펌웨어 상태 타입 이름을 FirmwareState_t로 정의합니다.
+// [통합 시 삭제됨] FirmwareState_t 는 bootloader.h 가 정의합니다.
+// 값 구성(UPDATE_NONE=0, UPDATE_AVAILABLE)은 동일합니다. 다만 의미가 정밀해졌습니다.
+// 스테이징 패턴에서 UPDATE_AVAILABLE 은 "업데이트 요청이 있다"가 아니라
+// "검증을 통과한 스테이징 이미지가 있어 설치할 수 있다" 를 뜻합니다. 
 
 static TaskHandle_t xTaskHandle_Watchdog = NULL; // 워치독 태스크의 핸들을 저장합니다.
 static TaskHandle_t xTaskHandle_CAN_Rx = NULL; // CAN 수신 태스크의 핸들을 저장합니다.
@@ -126,6 +143,11 @@ static QueueHandle_t xQueue_Sensor_Data = NULL; // 센서 데이터를 전달하
 static SemaphoreHandle_t xSemaphore_Actuator = NULL; // 액추에이터 자원 보호용 뮤텍스입니다.
 static SemaphoreHandle_t xMutex_Debug = NULL; // UART/printf 동시 접근 방지용 뮤텍스입니다.
 
+// 직전 부팅의 리셋 원인(RCC->CSR 상위 플래그)입니다. IWDG_Init() 으로 워치독을
+// 켜기 전에 읽어 두어야 하며, 디버거나 다음 부팅에서 워치독 리셋 여부를
+// 판별하는 근거가 됩니다. (통합 계층 보강)
+static volatile uint32_t ulResetCause = 0U; // 직전 리셋 원인 플래그를 보존합니다.
+
 // ---- 워치독 하트비트 및 업데이트 플래그 (수정 1) ---- 
 static volatile uint32_t ulHeartbeat_CAN_Rx = 0U; // CAN 수신 태스크의 하트비트 카운터입니다.
 static volatile uint32_t ulHeartbeat_Sensor = 0U; // 센서 태스크의 하트비트 카운터입니다.
@@ -135,11 +157,16 @@ static volatile BaseType_t xFirmwareUpdateActive = pdFALSE; // 펌웨어 업데�
 // 32비트 카운터가 한 검사 주기(100ms) 안에 2^32번 증가할 수 없으므로,
 // 이전 값과의 단순 비교만으로도 오버플로(wrap)에 안전합니다. 
 
+// ---- 긴급 정지 래치 (2차 수정) ---- 
+static volatile BaseType_t xEmergencyStopLatched = pdFALSE; // 긴급 정지 래치 플래그. 설정되면 안전 상태 해제는 시스템 리셋으로만 가능합니다.
+
 // ---- 오류 카운터: 빈 문장(;) 대신 실제 진단용 카운터로 대체 ---- 
 static volatile uint32_t ulErrCount_ActuatorQueueFull = 0U; // 액추에이터 명령 큐 가득 참 횟수입니다.
 static volatile uint32_t ulErrCount_SensorQueueFull = 0U; // 센서 데이터 큐 가득 참 횟수입니다.
 static volatile uint32_t ulErrCount_ActuatorMutexFail = 0U; // 액추에이터 뮤텍스 획득 실패 횟수입니다.
 static volatile uint32_t ulErrCount_DebugMutexFail = 0U; // 디버그 뮤텍스 획득 실패 횟수입니다.
+static volatile uint32_t ulErrCount_FirmwareStageInvalid = 0U; // 스테이징 이미지 검증 실패 횟수입니다.
+static volatile uint32_t ulErrCount_EmergencyLatchedDrop = 0U; // (2차 수정) 긴급 정지 래치 중 버려진 과거 명령의 횟수입니다.
 
 void vTask_Watchdog(void *pvParameters); // 워치독 태스크 함수의 프로토타입을 선언합니다.
 void vTask_CAN_Rx(void *pvParameters); // CAN 수신 태스크 함수의 프로토타입을 선언합니다.
@@ -152,7 +179,7 @@ static void prvConvertCanToActuatorCmd(const CAN_Message_t *pxCanMsg, // CAN 원
                                        ActuatorCmd_t *pxCmd); // 변환된 액추에이터 명령을 저장할 포인터를 인자로 받습니다.
 static void prvApplyActuatorCommand(const ActuatorCmd_t *pxCmd); // 액추에이터 명령을 실제 하드웨어에 적용하는 함수 프로토타입입니다.
 static void prvEmergencyStop(void); // 긴급 정지를 즉시 적용하는 함수 프로토타입입니다.
-static void prvFlashNewFirmwareSafely(void); // 워치독을 피드하면서 안전하게 플래싱하는 함수 프로토타입입니다.
+static void prvRequestFirmwareInstall(void); // 스테이징 이미지를 검증하고 설치를 요청하는 함수 프로토타입입니다.
 
 // --------------------------------------------------------------------------
 // 워치독 태스크 (수정 1)
@@ -254,9 +281,12 @@ void vTask_Sensor(void *pvParameters) // 센서 수집 태스크 함수를 정�
         xSensorData.throttle = ADC_ReadChannel(ADC_CHANNEL_THROTTLE); // 스로틀 센서 값을 ADC로 읽습니다.
         xSensorData.timestamp = xTaskGetTickCount(); // 센서 읽기 시점의 타임스탬프를 저장합니다.
 
-        if (xQueueSend(xQueue_Sensor_Data, &xSensorData, 0U) != pdPASS) // 센서 데이터 큐에 데이터 전송을 시도하고 실패 여부를 확인합니다.
+        // (2차 수정) keep-latest: 생산(100Hz)이 소비(Debug, ~18Hz)보다 빠르므로
+// 큐가 만석되는 것이 설계상 항상 발생한다. 길이 1 큐에 덮어쓰면 가장 최근
+// 측정값만 유지되고, 초당 수십 건의 drop 카운터 폭주도 사라진다. 
+        if (xQueueOverwrite(xQueue_Sensor_Data, &xSensorData) != pdPASS) // 센서 데이터 큐에 최신 데이터를 덮어써서 저장을 시도합니다.
         { // 센서 데이터 큐 전송 실패 처리 블록을 시작합니다.
-            ulErrCount_SensorQueueFull++; // 큐 가득 참으로 센서 데이터가 유실된 횟수를 기록합니다.
+            ulErrCount_SensorQueueFull++; // (길이 1 큐에서는 실패하지 않지만) 진단용 카운터를 유지합니다.
         } // 센서 데이터 큐 전송 실패 처리 블록을 종료합니다.
 
         vTaskDelayUntil(&xLastWakeTime, xPeriod); // 다음 10ms 주기까지 태스크를 지연시켜 정밀한 주기를 유지합니다.
@@ -282,7 +312,13 @@ void vTask_Actuator(void *pvParameters) // 액추에이터 제어 태스크 함�
         xStatus = xQueueReceive(xQueue_ActuatorCmd, &xCmd, xQueueTimeout); // 액추에이터 명령 큐에서 명령 수신을 시도합니다.
         if (xStatus == pdPASS) // 명령 큐에서 명령을 정상적으로 수신했는지 확인합니다.
         { // 명령 수신 성공 처리 블록을 시작합니다.
-            if (xSemaphoreTake(xSemaphore_Actuator, pdMS_TO_TICKS(ACTUATOR_MUTEX_TIMEOUT_MS)) == pdTRUE) // 액추에이터 뮤텍스 획득을 시도하고 성공 여부를 확인합니다.
+            if ((xEmergencyStopLatched != pdFALSE) && (xCmd.commandId != CMD_EMERGENCY_STOP)) // (2차 수정) 긴급 정지 래치 중인지, 그리고 긴급 정지 명령이 아닌지 확인합니다.
+            { // 래치 중 과거 명령 차단 블록을 시작합니다.
+                ulErrCount_EmergencyLatchedDrop++; // 래치 이전에 큐에 들어온 과거 명령을 버린 횟수를 기록합니다.
+                // 긴급 정지 이후 안전 상태는 시스템 리셋으로만 해제되므로, 스로틀/팬
+                // 재가동 명령은 락아웃합니다. (안전 상태 "유지" 보장) 
+            } // 래치 중 과거 명령 차단 블록을 종료합니다.
+            else if (xSemaphoreTake(xSemaphore_Actuator, pdMS_TO_TICKS(ACTUATOR_MUTEX_TIMEOUT_MS)) == pdTRUE) // 액추에이터 뮤텍스 획득을 시도하고 성공 여부를 확인합니다.
             { // 액추에이터 뮤텍스 획득 성공 블록을 시작합니다.
                 prvApplyActuatorCommand(&xCmd); // 수신된 명령을 실제 PWM/GPIO 출력에 적용합니다.
                 xSemaphoreGive(xSemaphore_Actuator); // 사용이 끝난 액추에이터 뮤텍스를 반환합니다.
@@ -360,12 +396,15 @@ static void prvApplyActuatorCommand(const ActuatorCmd_t *pxCmd) // 액추에이�
 } // 액추에이터 명령 적용 함수를 종료합니다.
 
 // --------------------------------------------------------------------------
-// 긴급 정지 (수정 2)
+// 긴급 정지 (수정 2 + 2차 수정 래치)
 // 큐를 거치지 않고 호출 즉시 안전 상태를 적용합니다.
 // 뮤텍스는 portMAX_DELAY로 획득을 보장하므로 명령이 유실되지 않습니다.
+// (2차 수정) 적용 후 안전 상태를 래치하여, 큐에 남아 있던 과거 명령이
+// 액추에이터를 재가동하는 것을 시스템 리셋 전까지 차단합니다.
 // -------------------------------------------------------------------------- 
 static void prvEmergencyStop(void) // 긴급 정지 함수를 정의합니다.
 { // 긴급 정지 함수 본문을 시작합니다.
+    xEmergencyStopLatched = pdTRUE; // (2차 수정) 안전 상태를 래치합니다. 해제는 시스템 리셋으로만 가능합니다.
     if (xSemaphoreTake(xSemaphore_Actuator, portMAX_DELAY) == pdTRUE) // 긴급 경로이므로 무한 대기로 액추에이터 뮤텍스 획득을 보장합니다.
     { // 액추에이터 뮤텍스 획득 성공 블록을 시작합니다.
         PWM_SetDuty(PWM_CHANNEL_THROTTLE, 0U); // 스로틀 PWM을 0으로 설정하여 출력을 차단합니다.
@@ -420,21 +459,52 @@ void vTask_Debug(void *pvParameters) // 디버깅 태스크 함수를 정의합�
 } // 디버깅 태스크 함수를 종료합니다.
 
 // --------------------------------------------------------------------------
-// 안전한 펌웨어 플래싱 (수정 1)
-// 플래싱 진입 전후에 IWDG를 피드하고, 플래시 루틴 내부에서도 단계마다 피드하도록
-// 요구 사항을 명시합니다. (플래시 전체 삭제는 수백 ms ~ 수 초가 소요될 수 있음)
+// 펌웨어 설치 요청 (스테이징 패턴으로 전환)
+//
+// [기존 구조의 문제 — 셀프 플래싱]
+//   예전에는 이 함수가 Bootloader_FlashNewFirmware() 를 호출해, 실행 중인
+//   애플리케이션이 자기 자신이 들어 있는 플래시 영역을 지우고 다시 썼습니다.
+//   이 구조는 원리적으로 복구가 불가능합니다.
+//     1) 자기 코드를 지우는 순간부터 리셋되면 부팅할 코드 자체가 없습니다.
+//        (전원 순단, 워치독 타임아웃, 브라운아웃 — 모두 현실에서 일어납니다)
+//     2) 플래시 삭제/기록 중에는 같은 뱅크에서 명령을 페치할 수 없어,
+//        플래싱 루틴 전체를 RAM 으로 옮기지 않으면 버스 폴트가 납니다.
+//     3) 수신한 이미지가 손상되었어도 이미 원본을 지운 뒤라 되돌릴 수 없습니다.
+//
+// [바뀐 구조 — 스테이징]
+//   실행 중인 코드는 절대 자기 영역을 건드리지 않습니다.
+//     수신 → 스테이징 영역(섹터 5, 0x08020000)에 기록  ← 앱이 하는 일은 여기까지
+//     검증 → CRC-32 + 헤더 + 벡터 테이블 유효성 확인
+//     요청 → 백업 SRAM 의 BootCtrl 블록에 "설치 요청" 기록
+//     리셋 → 섹터 0 의 부트로더가 검증·복사·점프를 수행
+//   앱 영역을 지우는 주체가 부트로더(다른 섹터에서 실행)로 바뀌므로 위 3가지
+//   문제가 모두 사라지고, 복사 도중 전원이 끊겨도 다음 부팅에서 부트로더가
+//   시도 횟수를 보고 재설치하거나 복구 모드로 진입합니다.
+//
+// 따라서 이 함수는 더 이상 플래시를 쓰지 않습니다. 검증과 요청만 남습니다.
 // -------------------------------------------------------------------------- 
-static void prvFlashNewFirmwareSafely(void) // 안전한 플래싱 함수를 정의합니다.
-{ // 안전한 플래싱 함수 본문을 시작합니다.
-    IWDG_ReloadCounter(); // 플래싱 진입 직전에 IWDG를 피드하여 타임아웃 여유를 확보합니다.
+static void prvRequestFirmwareInstall(void) // 펌웨어 설치 요청 함수를 정의합니다.
+{ // 펌웨어 설치 요청 함수 본문을 시작합니다.
+    IWDG_ReloadCounter(); // 요청 처리 진입 직전에 IWDG를 피드하여 타임아웃 여유를 확보합니다.
 
-    // 주의: Bootloader_FlashNewFirmware() 내부에서는 플래시 삭제(erase)/기록(program)
-// 각 단계 사이마다 IWDG_ReloadCounter()를 반드시 호출해야 합니다.
-// 이 시점에는 스케줄러가 정지되어 워치독 태스크가 동작할 수 없기 때문입니다. 
-    Bootloader_FlashNewFirmware(); // 새 펌웨어 이미지를 플래시 메모리에 기록합니다.
+    // 스테이징 이미지를 마지막으로 한 번 더 검증합니다. 여기서 실패하면
+// 설치 요청을 기록하지 않으므로 리셋도 일어나지 않고, 현재 펌웨어가 그대로
+// 계속 동작합니다. (셀프 플래싱에서는 불가능했던 "안전한 취소"입니다) 
+    if (Bootloader_VerifyStaged() != FW_IMAGE_OK) // 스테이징 영역 이미지의 CRC와 헤더를 검증합니다.
+    { // 스테이징 이미지 검증 실패 처리 블록을 시작합니다.
+        Bootloader_AbortStaging(); // 손상된 스테이징 이미지를 무효화합니다.
+        xFirmwareUpdateActive = pdFALSE; // 워치독 태스크를 정상 감시 모드로 되돌립니다.
+        IWDG_ReloadCounter(); // 정상 복귀 직전에 IWDG를 한 번 더 피드합니다.
+        return; // 리셋하지 않고 현재 펌웨어로 계속 동작합니다.
+    } // 스테이징 이미지 검증 실패 처리 블록을 종료합니다.
 
     IWDG_ReloadCounter(); // 리셋 직전에 한 번 더 피드하여 안전 마진을 확보합니다.
-} // 안전한 플래싱 함수를 종료합니다.
+
+    // 백업 SRAM 에 설치 요청을 기록하고 NVIC_SystemReset() 을 호출합니다.
+// 이 함수는 정상적으로 반환하지 않습니다. 리셋 후 섹터 0 의 부트로더가
+// 스테이징 → 앱 영역 복사를 수행합니다. 
+    Bootloader_RequestInstallAndReset(); // 설치를 요청하고 시스템을 리셋합니다.
+} // 펌웨어 설치 요청 함수를 종료합니다.
 
 void vTask_Firmware(void *pvParameters) // 펌웨어 업데이트 태스크 함수를 정의합니다.
 { // 펌웨어 업데이트 태스크 함수 본문을 시작합니다.
@@ -478,10 +548,40 @@ void vTask_Firmware(void *pvParameters) // 펌웨어 업데이트 태스크 함�
             } // 디버깅 태스크 정지 블록을 종료합니다.
             // 워치독 태스크는 정지하지 않습니다: 업데이트 플래그를 보고 무조건 피드합니다. 
 
-            vTaskSuspendAll(); // 펌웨어 플래싱 중 스케줄러를 정지합니다.
-            prvFlashNewFirmwareSafely(); // 워치독을 피드하면서 새 펌웨어를 기록합니다.
-            NVIC_SystemReset(); // 업데이트 완료 후 시스템을 리셋합니다.
-            // 정상적으로는 위에서 리셋되므로 이 아래는 실행되지 않습니다. 
+            // 스테이징 패턴에서는 이 태스크가 플래시를 쓰지 않으므로
+// vTaskSuspendAll() 로 스케줄러를 멈출 필요가 없습니다.
+// (오히려 멈추면 워치독 태스크까지 정지해 위험합니다. 예전 셀프 플래싱
+//  구조에서 스케줄러를 멈춰야 했던 이유는 플래시 기록 중 컨텍스트 스위치를
+//  막기 위해서였습니다.)
+// 여기서 하는 일은 "검증 + 요청 기록 + 리셋" 뿐이며 수 밀리초면 끝납니다. 
+            prvRequestFirmwareInstall(); // 스테이징 이미지를 검증하고 설치를 요청한 뒤 리셋합니다.
+
+            // 여기에 도달했다는 것은 스테이징 이미지 검증에 실패해 설치를
+// 취소했다는 뜻입니다. 현재 펌웨어로 계속 동작하며 다음 주기에 다시
+// 확인합니다. (검증 성공 시에는 위에서 리셋되어 도달하지 않습니다) 
+            ulErrCount_FirmwareStageInvalid++; // 스테이징 이미지 검증 실패 횟수를 기록합니다.
+
+            // 정지시켰던 태스크들을 되살려 정상 운전으로 복귀합니다.
+// 셀프 플래싱 구조에서는 "되돌아온다"는 개념 자체가 없었지만,
+// 스테이징 구조에서는 설치를 취소하고 원래 상태로 돌아올 수 있습니다. 
+            if (xTaskHandle_Debug != NULL) // 디버깅 태스크 핸들이 유효한지 확인합니다.
+            { // 디버깅 태스크 재개 블록을 시작합니다.
+                vTaskResume(xTaskHandle_Debug); // 디버깅 태스크를 재개합니다.
+            } // 디버깅 태스크 재개 블록을 종료합니다.
+            if (xTaskHandle_Actuator != NULL) // 액추에이터 태스크 핸들이 유효한지 확인합니다.
+            { // 액추에이터 태스크 재개 블록을 시작합니다.
+                vTaskResume(xTaskHandle_Actuator); // 액추에이터 제어 태스크를 재개합니다.
+            } // 액추에이터 태스크 재개 블록을 종료합니다.
+            if (xTaskHandle_Sensor != NULL) // 센서 태스크 핸들이 유효한지 확인합니다.
+            { // 센서 태스크 재개 블록을 시작합니다.
+                vTaskResume(xTaskHandle_Sensor); // 센서 수집 태스크를 재개합니다.
+            } // 센서 태스크 재개 블록을 종료합니다.
+            if (xTaskHandle_CAN_Rx != NULL) // CAN 태스크 핸들이 유효한지 확인합니다.
+            { // CAN 태스크 재개 블록을 시작합니다.
+                vTaskResume(xTaskHandle_CAN_Rx); // CAN 수신 태스크를 재개합니다.
+            } // CAN 태스크 재개 블록을 종료합니다.
+
+            xFirmwareUpdateActive = pdFALSE; // 워치독 태스크를 정상 하트비트 감시 모드로 되돌립니다.
         } // 펌웨어 업데이트 처리 블록을 종료합니다.
 
         vTaskDelay(xCheckPeriod); // 다음 업데이트 요청 확인까지 5초 동안 태스크를 지연합니다.
@@ -492,8 +592,58 @@ int main(void) // 프로그램 진입점 main 함수를 정의합니다.
 { // main 함수 본문을 시작합니다.
     BaseType_t xCreateResult = pdFAIL; // 태스크 생성 결과를 저장할 변수입니다.
 
-    SystemClock_Config(); // 시스템 클록을 설정합니다.
-    NVIC_PriorityGroupConfig(NVIC_PriorityGroup_4); // STM32 NVIC 우선순위 그룹을 설정합니다.
+    // ---- 통합 계층: HAL 초기화 (반드시 다른 어떤 HAL 호출보다 먼저) ----
+// HAL_Init() 은 (1) 플래시 프리페치/명령·데이터 캐시를 켜고, (2) NVIC 우선순위
+// 그룹을 4(서브 우선순위 없음)로 설정하며, (3) SysTick 을 1ms 타임베이스로
+// 시작하고 HAL_Delay()/HAL_GetTick() 이 동작하게 만듭니다.
+// 이 호출이 없으면 BMP280_Init() 안의 HAL_Delay(10) 이 영원히 반환하지 않고,
+// HAL 드라이버의 타임아웃 처리도 전부 무력화됩니다. 
+    HAL_Init(); // HAL 라이브러리와 1ms 타임베이스(SysTick)를 초기화합니다.
+
+    SystemClock_Config(); // 시스템 클록을 180MHz로 설정합니다.
+
+    // SystemClock_Config() 가 HCLK 를 16MHz(HSI) → 180MHz 로 바꾸었으므로
+// SysTick 재적재값을 새 클록에 맞춰 다시 계산해야 1ms 틱이 유지됩니다.
+// (HAL_RCC_ClockConfig() 내부에서 HAL_InitTick() 을 다시 호출하지만,
+//  SystemCoreClock 갱신과 함께 명시적으로 한 번 더 맞춰 둡니다.) 
+    SystemCoreClockUpdate(); // RCC 레지스터를 읽어 SystemCoreClock 전역을 갱신합니다.
+    (void)HAL_InitTick(TICK_INT_PRIORITY); // 새 클록 기준으로 HAL 타임베이스를 재설정합니다.
+
+    // HAL_Init() 이 이미 그룹 4로 설정하지만, 의존 관계를 코드에 남기기 위해
+// 명시적으로 한 번 더 호출합니다. FreeRTOS Cortex-M 포트는 "서브 우선순위 없음"
+// (모든 비트가 선점 우선순위)을 전제로 configMAX_SYSCALL_INTERRUPT_PRIORITY 를
+// 판정하므로 이 설정은 필수입니다.
+// 주의: NVIC_PriorityGroup_4 는 구형 SPL 매크로라 HAL 에는 존재하지 않습니다.
+//       HAL 의 NVIC_PRIORITYGROUP_4 를 사용해야 컴파일됩니다. (정적 증빙 결함 #2) 
+    NVIC_PriorityGroupConfig(NVIC_PRIORITYGROUP_4); // STM32 NVIC 우선순위 그룹을 4로 설정합니다.
+
+    // ---- 통합 계층: 독립 워치독 시작 ----
+// 워치독 태스크의 점검 주기는 100ms 이므로, 타임아웃은 그보다 충분히 큰 1초로
+// 잡습니다. IWDG 는 한 번 켜면 소프트웨어로 끌 수 없으므로 스케줄러 시작 직전에
+// 시작해야 하며, 리셋 원인 플래그는 켜기 전에 읽어 두어야 의미가 있습니다. 
+    ulResetCause = IWDG_GetResetFlags(); // 직전 리셋 원인(RCC->CSR 플래그)을 보존합니다.
+    IWDG_ClearResetFlags(); // 다음 부팅에서 원인을 구분할 수 있도록 플래그를 지웁니다.
+
+    // [타임아웃 산정 근거] 워치독 타임아웃은 "정상 동작 중 피드가 끊길 수 있는
+    // 가장 긴 구간"보다 커야 합니다. 이 앱에서 그 구간은 태스크 주기가 아니라
+    // 스테이징 영역 삭제입니다.
+    //
+    // Bootloader_BeginStaging() 은 128KB 단일 섹터(섹터 5)를 삭제하는데,
+    // STM32F446 의 128KB 섹터 삭제는 전형 1초 / 최악 2초가 걸립니다. 더 중요한 것은
+    // 삭제 중 CPU 가 같은 뱅크에서 명령을 페치하지 못해 완전히 멈춘다는 점입니다.
+    // 멈춰 있는 동안에는 어떤 태스크도 실행되지 않으므로 IWDG 를 피드할 수 없습니다.
+    // (Flash_SetProgressHook() 은 삭제 "전후"에만 호출될 뿐, 삭제 "도중"에는
+    //  CPU 가 정지해 있어 아무것도 실행할 수 없습니다.)
+    //
+    // 따라서 1초 타임아웃으로는 정상적인 펌웨어 수신조차 워치독 리셋을 유발합니다.
+    // 최악 삭제 시간 2초에 LSI 편차(공칭 32kHz, 실제 17~47kHz)를 고려한 마진을
+    // 더해 4초로 설정합니다. LSI 가 빠른 쪽으로 치우쳐도 실제 타임아웃이
+    // 2초 아래로 내려가지 않도록 하는 값입니다.
+    //
+    // 트레이드오프: 태스크 정지 검출이 1초에서 4초로 느려집니다. 이를 보완하기 위해
+    // 워치독 태스크는 100ms 주기 하트비트 검사를 그대로 유지하며, 하트비트가
+    // 끊기면 IWDG 만료를 기다리지 않고 스스로 피드를 멈춥니다.
+    IWDG_Init(4000U); // 독립 워치독을 4초 타임아웃으로 시작합니다. (최악 섹터 삭제 2초 + 마진)
 
     xQueue_ActuatorCmd = xQueueCreate(ACTUATOR_CMD_QUEUE_LEN, sizeof(ActuatorCmd_t)); // 액추에이터 명령 큐를 생성합니다.
     xQueue_Sensor_Data = xQueueCreate(SENSOR_DATA_QUEUE_LEN, sizeof(SensorData_t)); // 센서 데이터 큐를 생성합니다.

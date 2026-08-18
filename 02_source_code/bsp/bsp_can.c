@@ -1,5 +1,7 @@
 // bsp_can.c — CAN 통신 BSP 구현 (STM32F4 HAL + FreeRTOS)입니다.
 // CAN1(PB8/PB9)을 수신 인터럽트 + 링 버퍼 + 세마포어 구조로 구동합니다.
+// (2차 수정) CAN_Receive는 세마포어 대기 전 링 버퍼 잔여를 먼저 확인하여
+// 바이너리 세마포어의 lost-wakeup(토큰 소진으로 인한 불필요한 블록)을 제거합니다.
 #include "bsp_can.h"  // CAN BSP 헤더를 포함합니다.
 
 #include "stm32f4xx_hal.h"  // STM32F4 HAL 드라이버 헤더를 포함합니다.
@@ -82,15 +84,28 @@ void CAN_FilterConfig(uint32_t ulFilterId, uint32_t ulFilterMask)  // CAN 수신
 
 BaseType_t CAN_Receive(CAN_Message_t *pxMsg, TickType_t xTimeout)  // CAN 수신 함수를 정의합니다.
 {  // CAN 수신 함수 본문을 시작합니다.
+    uint8_t ucPendingCount = 0U;  // (2차 수정) 세마포어 대기 전 링 버퍼 잔여 메시지 수를 저장하는 변수입니다.
     if (pxMsg == NULL)  // 출력 메시지 포인터가 유효한지 확인합니다.
     {  // NULL 포인터 처리 블록을 시작합니다.
         return pdFAIL;  // 유효하지 않으면 실패를 반환합니다.
     }  // NULL 포인터 처리 블록을 종료합니다.
 
-    if (xSemaphoreTake(s_xRxSemaphore, xTimeout) != pdTRUE)  // 메시지 도착을 타임아웃 동안 대기합니다.
-    {  // 대기 실패(타임아웃) 처리 블록을 시작합니다.
-        return pdFAIL;  // 타임아웃이면 실패를 반환합니다.
-    }  // 대기 실패 처리 블록을 종료합니다.
+    // (2차 수정) lost-wakeup 방지: 알림 세마포어는 바이너리(최대 카운트 1)이므로,
+    // 태스크가 소비 중일 때 프레임 2개가 연속 도착하면 세마포어는 한 번만 켜진다.
+    // 이때 링 버퍼에는 메시지가 남아 있는데도 태스크가 세마포어 대기로 블록하여,
+    // 최악의 경우 "다음 프레임이 도착할 때까지" 긴급 정지 프레임이 지연될 수 있었다.
+    // 따라서 블록하기 전에 링 잔여를 먼저 확인한다.
+    taskENTER_CRITICAL();  // ISR 과의 경쟁을 막기 위해 임계 구역에 진입합니다.
+    ucPendingCount = s_rxCount;  // 링 버퍼 잔여 메시지 수를 읽습니다.
+    taskEXIT_CRITICAL();  // 임계 구역에서 빠져나옵니다.
+
+    if (ucPendingCount == 0U)  // 링 버퍼가 비어 있는 경우에만 세마포어를 대기합니다.
+    {  // 세마포어 대기 블록을 시작합니다.
+        if (xSemaphoreTake(s_xRxSemaphore, xTimeout) != pdTRUE)  // 메시지 도착을 타임아웃 동안 대기합니다.
+        {  // 대기 실패(타임아웃) 처리 블록을 시작합니다.
+            return pdFAIL;  // 타임아웃이면 실패를 반환합니다.
+        }  // 대기 실패(타임아웃) 처리 블록을 종료합니다.
+    }  // 세마포어 대기 블록을 종료합니다.
 
     taskENTER_CRITICAL();  // ISR 과의 경쟁을 막기 위해 임계 구역에 진입합니다.
     if (s_rxCount == 0U)  // 버퍼가 실제로 비어있는지 방어적으로 확인합니다.
@@ -105,6 +120,13 @@ BaseType_t CAN_Receive(CAN_Message_t *pxMsg, TickType_t xTimeout)  // CAN 수신
 
     return pdPASS;  // 수신 성공을 반환합니다.
 }  // CAN 수신 함수를 종료합니다.
+
+void *CAN_GetHandle(void)  // CAN1 HAL 핸들 접근자를 정의합니다.
+{  // 핸들 접근자 본문을 시작합니다.
+    // app/stm32f4xx_it.c 의 CAN1_RX0_IRQHandler() 가 HAL_CAN_IRQHandler() 에
+    // 넘길 핸들을 얻기 위해 사용합니다. 핸들 자체는 이 파일 안에 캡슐화된 상태로 둡니다.
+    return &s_hcan1;  // CAN1 HAL 핸들의 주소를 반환합니다.
+}  // 핸들 접근자를 종료합니다.
 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)  // CAN RX FIFO0 메시지 대기 콜백(ISR)을 정의합니다.
 {  // 콜백 함수 본문을 시작합니다.
