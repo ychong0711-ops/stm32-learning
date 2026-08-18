@@ -43,7 +43,7 @@ Interrupt calculator / Project loader (manifest)
 
 ```
 02_source_code/
-├── main_fixed.c            ← FreeRTOS app (watchdog & emergency-stop safety fixes, fully commented)
+├── main_fixed.c            ← FreeRTOS app (v2: watchdog & emergency-stop fixes + 2026-08 safety review, fully commented)
 ├── bsp/ (22 files)         ← STM32F4 HAL BSP (CAN·ADC·PWM·GPIO·UART·IWDG·Flash·Bootloader·BMP280·Clock)
 ├── docs/
 │   ├── docs_realtime_theory_proof.md         ← real-time theory mathematical proof (RMS/LL/Bini/RTA)
@@ -51,7 +51,8 @@ Interrupt calculator / Project loader (manifest)
 │   ├── docs_measurement_report_template.md   ← measurement report template
 │   ├── docs_autosar_iso26262.md              ← AUTOSAR·ISO 26262 concepts + project mapping
 │   └── docs_motivation_letter.md             ← motivation letter draft (English)
-└── rta_analysis.py         ← response-time analysis calculator (re-runnable)
+├── rta_analysis.py         ← response-time analysis calculator (re-runnable)
+└── rta_results.txt         ← latest RTA output (after v2 fixes, all scenarios schedulable)
 ```
 
 **Core story** (one paragraph for motivation letter / interview):
@@ -107,8 +108,11 @@ Interrupt calculator / Project loader (manifest)
 |---|---|---|
 | Hardware measurement (Nucleo) | 🥇 highest | jitter·E2E·IWDG are measurement-only |
 | Measured WCET → RTA recompute | 🥈 high | replace static lower bound with measurement |
+| Self-flashing → staging-area pattern | 🥈 high | current skeleton erases app sectors while running from them (brick risk); flash to staging region + bootloader copy after reset is the standard pattern |
+| Integration layer (HAL_Init, stm32f4xx_it.c, startup, linker script, FreeRTOSConfig.h) | 🥈 high | `HAL_Delay()` in `BMP280_Init` infinite-loops if the HAL tick is not wired; needed before first hardware run |
 | AURIX introduction | 🥉 differentiator | automotive safety MCU standard |
 | AUTOSAR·ISO 26262 deepening | parallel | concept → practice |
+| Re-sync `learning_program.html` code snapshot | 🥉 low | code-browser tab still embeds the pre-v2 `main_fixed.c` |
 
 ---
 
@@ -118,3 +122,28 @@ Interrupt calculator / Project loader (manifest)
 - Toolchain: arm-none-eabi-gcc 14.2.1, gcc 14.2, cppcheck 2.17.1
 - Verified: JS `node --check` pass, project cross-compile OK, ZIP integrity OK
 - Written: 2026-08
+
+---
+
+## 8. v2 safety review fixes (2026-08-18) — found by self-review, before anyone else did
+
+A second-pass review of the headline safety story ("fixed watchdog & emergency stop") found that
+the two flagship fixes still had gaps. All five are fixed in this revision and the analysis was re-run:
+
+| # | Defect found | Severity | Fix |
+|---|---|---|---|
+| 1 | **IWDG was never initialized** — `IWDG_Init()` was called nowhere, so every feed was a no-op and the watchdog story (fix 1 of v1) ran on dead hardware | 🔴 critical | `main()` now calls `IWDG_Init(IWDG_TIMEOUT_MS=1000)` before starting the scheduler |
+| 2 | **CAN lost-wakeup** — binary semaphore (max count 1) + 16-slot ring: after a 2-frame burst the task could block with messages still pending; worst case an emergency-stop frame waited *indefimately* for the next bus traffic | 🔴 critical | `CAN_Receive()` checks ring occupancy *before* blocking on the semaphore |
+| 3 | **Emergency stop not latched** — stale `CMD_THROTTLE` commands already in the queue re-energized the actuator after `prvEmergencyStop()` | 🟠 medium | `xEmergencyStopLatched` set on e-stop; non-e-stop commands dropped (counted) until system reset |
+| 4 | **Sensor queue structurally overflowing** — production 100 Hz vs debug consumption ~18 Hz ⇒ queue(16) permanently full, drop counter ran away at ~82/s | 🟠 medium | keep-latest: queue length 1 + `xQueueOverwrite()` — always freshest sample, no overflow |
+| 5 | **RTA blind spot: tied priorities** — Sensor and Actuator both p=3; FreeRTOS time-slices equal priorities, which the RTA (`hp = strictly higher`) does not model — and "RMS-optimality" claim didn't match the code | 🟠 medium | Sensor=4 > Actuator=3; `rta_analysis.py` now warns if any priorities are tied; scenario B is a full strict-RMS re-assignment; CAN_Rx `B_i=0.05ms` models the mutex critical section |
+
+**Re-run result** (`02_source_code/rta_results.txt`): U = 24.30% unchanged (priorities don't
+affect utilization); all tasks schedulable in all three scenarios. Worst R: CAN_Rx 0.14 ms
+(was 0.09 — now includes blocking term), Actuator 0.95 ms (was 0.15 — now includes Sensor
+interference that the tie previously hid). Watchdog at RMS position (scenario B) still passes
+(R = 7.22 ms ≪ 1000 ms), so the "safety-first" top placement remains a justified design choice.
+
+**Framing for interviews**: this table is deliberately honest — the project claims "found and
+fixed 2 defects" as its story, so the review that found 5 more in the fix itself is exactly the
+ISO 26262 mindset the project is selling. Known remaining gaps are in §6.

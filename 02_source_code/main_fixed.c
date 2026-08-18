@@ -15,6 +15,22 @@
 // - 수정: 긴급 정지는 CAN 수신 태스크에서 큐를 거치지 않고 즉시 안전 상태를
 // 적용(prvEmergencyStop). 뮤텍스는 portMAX_DELAY로 획득을 보장.
 // --------------------------------------------------------------------------
+// [2차 안전 수정 (2026-08-18, 자체 리뷰 반영)] — 발견~조치 내역은 README §8 참조
+// - [2-1] IWDG 실제 활성화: 기존에는 IWDG_Init() 호출이 어디에도 없어 워치독
+//   하드웨어가 켜지지 않았고, 모든 피드가 사실상 no-op였음. main()에서
+//   IWDG_Init(1000ms)을 호출하여 "수정 1"의 하트비트 감시가 실제로 작동하게 함.
+// - [2-2] CAN 수신 lost-wakeup 제거(bsp_can.c): 알림이 바이너리 세마포어(최대 1)인데
+//   링 버퍼는 16칸이라, 버스트 수신 시 링에 메시지가 남아 있어도 세마포어 토큰
+//   소진으로 태스크가 블록할 수 있었음. 세마포어 대기 전 링 잔여를 먼저 확인.
+// - [2-3] 긴급 정지 래치: prvEmergencyStop() 후 안전 상태를 래치하고, 시스템
+//   리셋 전까지 큐에 남은 과거 명령(CMD_THROTTLE 등)이 액추에이터를 재가동하는
+//   것을 차단. 유실 방지(수정 2)에 이어 안전 상태 "유지"를 보장.
+// - [2-4] 센서 큐 keep-latest 전략: 생산 100Hz 대비 디버그 소비 ~18Hz 미스매치로
+//   큐(16)가 부팅 직후 만석되고 drop 카운터가 폭주하던 구조적 문제를, 길이 1 +
+//   xQueueOverwrite(최신값 유지)로 해결.
+// - [2-5] 우선순위 분리: Sensor(10ms)=4 > Actuator(20ms)=3으로 RMS 정합성 확보.
+//   동일 우선순위 타임슬라이싱 간섭이 RTA에 모델링되지 않는 모호함 제거.
+// --------------------------------------------------------------------------
 // BSP 함수들(CAN_Receive, ADC_ReadChannel, PWM_SetDuty 등)은 실제 드라이버 함수가
 // 존재한다고 가정한 코드입니다.
 // 
@@ -45,13 +61,13 @@
 
 #define TASK_WATCHDOG_PRIORITY 6U // 워치독 태스크는 최상위 우선순위로 두어 항상 실행되도록 합니다.
 #define TASK_CAN_PRIORITY 5U // CAN 수신 태스크는 두 번째로 높은 우선순위로 설정합니다.
-#define TASK_SENSOR_PRIORITY 3U // 센서 태스크는 중간 우선순위로 설정합니다.
+#define TASK_SENSOR_PRIORITY 4U // 센서 태스크 우선순위. (2차 수정) Actuator(20ms)보다 주기가 짧으므로 RMS에 따라 한 단계 위에 배치합니다.
 #define TASK_ACTUATOR_PRIORITY 3U // 액추에이터 태스크는 중간 우선순위로 설정합니다.
 #define TASK_DEBUG_PRIORITY 2U // 디버깅 태스크는 낮은 우선순위로 설정합니다.
 #define TASK_FIRMWARE_PRIORITY 1U // 펌웨어 업데이트 태스크는 가장 낮은 우선순위로 설정합니다.
 
 #define ACTUATOR_CMD_QUEUE_LEN 16U // 액추에이터 명령 큐의 최대 깊이를 정의합니다.
-#define SENSOR_DATA_QUEUE_LEN 16U // 센서 데이터 큐의 최대 깊이를 정의합니다.
+#define SENSOR_DATA_QUEUE_LEN 1U // 센서 데이터 큐 길이. (2차 수정) keep-latest 전략으로 길이 1 + xQueueOverwrite를 사용해 항상 최신값만 유지합니다.
 
 #define WATCHDOG_CHECK_PERIOD_MS 100U // 워치독 태스크의 하트비트 검사 주기를 100ms로 정의합니다.
 #define CAN_RX_TIMEOUT_MS 10U // CAN 수신 타임아웃을 10ms로 정의합니다.
@@ -60,6 +76,7 @@
 #define DEBUG_QUEUE_TIMEOUT_MS 100U // 디버깅 태스크의 센서 큐 대기 타임아웃을 100ms로 정의합니다.
 #define DEBUG_MUTEX_TIMEOUT_MS 50U // 디버깅 뮤텍스 획득 타임아웃을 50ms로 정의합니다.
 #define FIRMWARE_CHECK_PERIOD_MS 5000U // 펌웨어 업데이트 요청 확인 주기를 5초로 정의합니다.
+#define IWDG_TIMEOUT_MS 1000U // IWDG 타임아웃을 1초로 정의합니다. (2차 수정) 워치독 검사 주기(100ms)의 10배 마진입니다.
 
 #define CAN_ID_EMERGENCY 0x123U // 긴급 정지 메시지로 사용할 CAN ID를 정의합니다.
 #define CAN_ID_THROTTLE_CMD 0x200U // 스로틀 제어 명령으로 사용할 CAN ID를 정의합니다.
@@ -74,7 +91,8 @@
 #define CAN_SPEED_500KBPS 500000U // CAN 통신 속도를 500kbps로 정의합니다.
 
 // IWDG 리로드 값(타임아웃)은 워치독 검사 주기(100ms)보다 충분히 크게 설정해야 합니다.
-// 예: IWDG 프리스케일러/리로드를 조합하여 약 1초로 설정하는 것을 권장합니다. 
+// (2차 수정) IWDG_TIMEOUT_MS=1000(약 1초)로 main()에서 실제 초기화합니다.
+// 참고: LSI(32kHz 공칭)는 칩별 편차가 있어 실제 타임아웃은 약 0.7~1.9초 범위입니다.
 
 typedef struct // CAN 메시지 구조체 정의를 시작합니다.
 { // CAN 메시지 멤버 변수 선언을 시작합니다.
@@ -135,11 +153,15 @@ static volatile BaseType_t xFirmwareUpdateActive = pdFALSE; // 펌웨어 업데�
 // 32비트 카운터가 한 검사 주기(100ms) 안에 2^32번 증가할 수 없으므로,
 // 이전 값과의 단순 비교만으로도 오버플로(wrap)에 안전합니다. 
 
+// ---- 긴급 정지 래치 (2차 수정) ---- 
+static volatile BaseType_t xEmergencyStopLatched = pdFALSE; // 긴급 정지 래치 플래그. 설정되면 안전 상태 해제는 시스템 리셋으로만 가능합니다.
+
 // ---- 오류 카운터: 빈 문장(;) 대신 실제 진단용 카운터로 대체 ---- 
 static volatile uint32_t ulErrCount_ActuatorQueueFull = 0U; // 액추에이터 명령 큐 가득 참 횟수입니다.
 static volatile uint32_t ulErrCount_SensorQueueFull = 0U; // 센서 데이터 큐 가득 참 횟수입니다.
 static volatile uint32_t ulErrCount_ActuatorMutexFail = 0U; // 액추에이터 뮤텍스 획득 실패 횟수입니다.
 static volatile uint32_t ulErrCount_DebugMutexFail = 0U; // 디버그 뮤텍스 획득 실패 횟수입니다.
+static volatile uint32_t ulErrCount_EmergencyLatchedDrop = 0U; // (2차 수정) 긴급 정지 래치 중 버려진 과거 명령의 횟수입니다.
 
 void vTask_Watchdog(void *pvParameters); // 워치독 태스크 함수의 프로토타입을 선언합니다.
 void vTask_CAN_Rx(void *pvParameters); // CAN 수신 태스크 함수의 프로토타입을 선언합니다.
@@ -254,9 +276,12 @@ void vTask_Sensor(void *pvParameters) // 센서 수집 태스크 함수를 정�
         xSensorData.throttle = ADC_ReadChannel(ADC_CHANNEL_THROTTLE); // 스로틀 센서 값을 ADC로 읽습니다.
         xSensorData.timestamp = xTaskGetTickCount(); // 센서 읽기 시점의 타임스탬프를 저장합니다.
 
-        if (xQueueSend(xQueue_Sensor_Data, &xSensorData, 0U) != pdPASS) // 센서 데이터 큐에 데이터 전송을 시도하고 실패 여부를 확인합니다.
+        // (2차 수정) keep-latest: 생산(100Hz)이 소비(Debug, ~18Hz)보다 빠르므로
+// 큐가 만석되는 것이 설계상 항상 발생한다. 길이 1 큐에 덮어쓰면 가장 최근
+// 측정값만 유지되고, 초당 수십 건의 drop 카운터 폭주도 사라진다. 
+        if (xQueueOverwrite(xQueue_Sensor_Data, &xSensorData) != pdPASS) // 센서 데이터 큐에 최신 데이터를 덮어써서 저장을 시도합니다.
         { // 센서 데이터 큐 전송 실패 처리 블록을 시작합니다.
-            ulErrCount_SensorQueueFull++; // 큐 가득 참으로 센서 데이터가 유실된 횟수를 기록합니다.
+            ulErrCount_SensorQueueFull++; // (길이 1 큐에서는 실패하지 않지만) 진단용 카운터를 유지합니다.
         } // 센서 데이터 큐 전송 실패 처리 블록을 종료합니다.
 
         vTaskDelayUntil(&xLastWakeTime, xPeriod); // 다음 10ms 주기까지 태스크를 지연시켜 정밀한 주기를 유지합니다.
@@ -282,7 +307,13 @@ void vTask_Actuator(void *pvParameters) // 액추에이터 제어 태스크 함�
         xStatus = xQueueReceive(xQueue_ActuatorCmd, &xCmd, xQueueTimeout); // 액추에이터 명령 큐에서 명령 수신을 시도합니다.
         if (xStatus == pdPASS) // 명령 큐에서 명령을 정상적으로 수신했는지 확인합니다.
         { // 명령 수신 성공 처리 블록을 시작합니다.
-            if (xSemaphoreTake(xSemaphore_Actuator, pdMS_TO_TICKS(ACTUATOR_MUTEX_TIMEOUT_MS)) == pdTRUE) // 액추에이터 뮤텍스 획득을 시도하고 성공 여부를 확인합니다.
+            if ((xEmergencyStopLatched != pdFALSE) && (xCmd.commandId != CMD_EMERGENCY_STOP)) // (2차 수정) 긴급 정지 래치 중인지, 그리고 긴급 정지 명령이 아닌지 확인합니다.
+            { // 래치 중 과거 명령 차단 블록을 시작합니다.
+                ulErrCount_EmergencyLatchedDrop++; // 래치 이전에 큐에 들어온 과거 명령을 버린 횟수를 기록합니다.
+                // 긴급 정지 이후 안전 상태는 시스템 리셋으로만 해제되므로, 스로틀/팬
+                // 재가동 명령은 락아웃합니다. (안전 상태 "유지" 보장) 
+            } // 래치 중 과거 명령 차단 블록을 종료합니다.
+            else if (xSemaphoreTake(xSemaphore_Actuator, pdMS_TO_TICKS(ACTUATOR_MUTEX_TIMEOUT_MS)) == pdTRUE) // 액추에이터 뮤텍스 획득을 시도하고 성공 여부를 확인합니다.
             { // 액추에이터 뮤텍스 획득 성공 블록을 시작합니다.
                 prvApplyActuatorCommand(&xCmd); // 수신된 명령을 실제 PWM/GPIO 출력에 적용합니다.
                 xSemaphoreGive(xSemaphore_Actuator); // 사용이 끝난 액추에이터 뮤텍스를 반환합니다.
@@ -360,12 +391,15 @@ static void prvApplyActuatorCommand(const ActuatorCmd_t *pxCmd) // 액추에이�
 } // 액추에이터 명령 적용 함수를 종료합니다.
 
 // --------------------------------------------------------------------------
-// 긴급 정지 (수정 2)
+// 긴급 정지 (수정 2 + 2차 수정 래치)
 // 큐를 거치지 않고 호출 즉시 안전 상태를 적용합니다.
 // 뮤텍스는 portMAX_DELAY로 획득을 보장하므로 명령이 유실되지 않습니다.
+// (2차 수정) 적용 후 안전 상태를 래치하여, 큐에 남아 있던 과거 명령이
+// 액추에이터를 재가동하는 것을 시스템 리셋 전까지 차단합니다.
 // -------------------------------------------------------------------------- 
 static void prvEmergencyStop(void) // 긴급 정지 함수를 정의합니다.
 { // 긴급 정지 함수 본문을 시작합니다.
+    xEmergencyStopLatched = pdTRUE; // (2차 수정) 안전 상태를 래치합니다. 해제는 시스템 리셋으로만 가능합니다.
     if (xSemaphoreTake(xSemaphore_Actuator, portMAX_DELAY) == pdTRUE) // 긴급 경로이므로 무한 대기로 액추에이터 뮤텍스 획득을 보장합니다.
     { // 액추에이터 뮤텍스 획득 성공 블록을 시작합니다.
         PWM_SetDuty(PWM_CHANNEL_THROTTLE, 0U); // 스로틀 PWM을 0으로 설정하여 출력을 차단합니다.
@@ -521,6 +555,8 @@ int main(void) // 프로그램 진입점 main 함수를 정의합니다.
     configASSERT(xCreateResult == pdPASS); // 디버그 태스크 생성 실패 시 시스템을 중단시킵니다.
     xCreateResult = xTaskCreate(vTask_Firmware, "Firmware", TASK_FIRMWARE_STACK_SIZE, NULL, TASK_FIRMWARE_PRIORITY, &xTaskHandle_Firmware); // 펌웨어 업데이트 태스크를 생성합니다.
     configASSERT(xCreateResult == pdPASS); // 펌웨어 태스크 생성 실패 시 시스템을 중단시킵니다.
+
+    IWDG_Init(IWDG_TIMEOUT_MS); // (2차 수정) IWDG를 실제로 활성화합니다. 기존에는 이 호출이 없어 워치독 하드웨어가 켜지지 않았고 모든 피드가 no-op였습니다. 초기화가 끝난 시점에 켜고, 스케줄러 시작 직후 워치독 태스크가 피드를 시작합니다.
 
     vTaskStartScheduler(); // FreeRTOS 스케줄러를 시작합니다.
     for (;;) // 스케줄러가 종료되는 비정상 상황을 대비한 무한 루프입니다.
