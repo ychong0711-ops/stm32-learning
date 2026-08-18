@@ -19,7 +19,7 @@ void SystemClock_Config(void)  // 시스템 클록 설정 함수를 정의합니
     RCC_OscInitStruct.PLL.PLLM = 8;  // PLLM=8 → VCO 입력 1MHz (8MHz/8) 를 만듭니다.
     RCC_OscInitStruct.PLL.PLLN = 180;  // PLLN=180 → VCO 180MHz 를 만듭니다.
     RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;  // PLLP=/2 → SYSCLK 180MHz 를 만듭니다.
-    RCC_OscInitStruct.PLL.PLLQ = 5;  // PLLQ=5 → 48MHz 클록을 위한 분주입니다. (필요 시 조정)
+    RCC_OscInitStruct.PLL.PLLQ = 5;  // PLLQ=5 → PLL48CLK 36MHz(=180/5)입니다. (2차 수정: 주석 정정 — 이 클록 플랜(180MHz)에서는 48MHz를 만들 수 없음(180/48=3.75). USB/SDIO 사용 시 클록 재구성 필요, 본 프로젝트는 미사용)
     (void)HAL_RCC_OscConfig(&RCC_OscInitStruct);  // 오실레이터/PLL 설정을 적용합니다.
 
     // [필수] 오버드라이브 모드를 활성화합니다.
