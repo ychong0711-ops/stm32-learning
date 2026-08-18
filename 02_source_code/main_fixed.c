@@ -19,12 +19,13 @@
 // 존재한다고 가정한 코드입니다.
 // 
 
+#include "stm32f4xx_hal.h" // HAL_Init() 등 HAL 공통 API를 사용하기 위해 포함합니다. (통합 계층 보강)
 #include "FreeRTOS.h" // FreeRTOS 커널 API와 자료형을 사용하기 위해 포함합니다.
 #include "task.h" // 태스크 생성, 삭제, 지연, 스케줄링 API를 사용하기 위해 포함합니다.
 #include "queue.h" // 태스크 간 데이터 전달을 위한 큐 API를 사용하기 위해 포함합니다.
 #include "semphr.h" // 세마포어와 뮤텍스 API를 사용하기 위해 포함합니다.
 #include <stdint.h> // uint8_t, uint16_t, uint32_t, int32_t 등 고정 폭 정수 타입을 사용하기 위해 포함합니다.
-#include <stdio.h> // printf 기반 UART 디버깅 출력을 사용하기 위해 포함합니다.
+#include <stdio.h> // printf 기반 UART 디버깅 출력을 사용하기 위해 포함합니다. (구현은 app/tiny_printf.c)
 #include "bsp_can.h" // CAN 초기화 및 수신 함수가 선언되어 있다고 가정하고 포함합니다.
 #include "bsp_adc.h" // ADC 초기화 및 채널 읽기 함수가 선언되어 있다고 가정하고 포함합니다.
 #include "bsp_pwm.h" // PWM 초기화 및 듀티 설정 함수가 선언되어 있다고 가정하고 포함합니다.
@@ -76,12 +77,11 @@
 // IWDG 리로드 값(타임아웃)은 워치독 검사 주기(100ms)보다 충분히 크게 설정해야 합니다.
 // 예: IWDG 프리스케일러/리로드를 조합하여 약 1초로 설정하는 것을 권장합니다. 
 
-typedef struct // CAN 메시지 구조체 정의를 시작합니다.
-{ // CAN 메시지 멤버 변수 선언을 시작합니다.
-    uint32_t ID; // CAN 메시지 식별자를 저장합니다.
-    uint8_t DLC; // CAN 데이터 길이 코드를 저장합니다.
-    uint8_t data[8]; // CAN 데이터 페이로드 최대 8바이트를 저장합니다.
-} CAN_Message_t; // CAN 메시지 구조체 타입 이름을 CAN_Message_t로 정의합니다.
+// [통합 시 삭제됨] CAN_Message_t 는 bsp_can.h 가 정의합니다.
+// 원래 이 자리에는 동일한 내용의 typedef 가 중복되어 있었습니다. 익명 구조체
+// typedef 는 두 번 쓰면 "서로 다른 타입"이 되어 C11 에서도 재정의 오류가 나므로,
+// 실제 빌드에서는 BSP 헤더의 정의 하나만 남겨야 합니다.
+// (참고: 필드 구성은 { uint32_t ID; uint8_t DLC; uint8_t data[8]; } 로 동일합니다) 
 
 typedef struct // 센서 데이터 구조체 정의를 시작합니다.
 { // 센서 데이터 멤버 변수 선언을 시작합니다.
@@ -107,11 +107,10 @@ typedef struct // 액추에이터 명령 구조체 정의를 시작합니다.
     uint32_t sourceCanId; // 명령을 발생시킨 CAN ID를 저장합니다.
 } ActuatorCmd_t; // 액추에이터 명령 구조체 타입 이름을 ActuatorCmd_t로 정의합니다.
 
-typedef enum // 펌웨어 상태 열거형 정의를 시작합니다.
-{ // 펌웨어 상태 값 선언을 시작합니다.
-    UPDATE_NONE = 0, // 펌웨어 업데이트 요청이 없는 상태를 의미합니다.
-    UPDATE_AVAILABLE // 펌웨어 업데이트 요청이 존재하는 상태를 의미합니다.
-} FirmwareState_t; // 펌웨어 상태 타입 이름을 FirmwareState_t로 정의합니다.
+// [통합 시 삭제됨] FirmwareState_t 는 bootloader.h 가 정의합니다.
+// 값 구성(UPDATE_NONE=0, UPDATE_AVAILABLE)은 동일합니다. 다만 의미가 정밀해졌습니다.
+// 스테이징 패턴에서 UPDATE_AVAILABLE 은 "업데이트 요청이 있다"가 아니라
+// "검증을 통과한 스테이징 이미지가 있어 설치할 수 있다" 를 뜻합니다. 
 
 static TaskHandle_t xTaskHandle_Watchdog = NULL; // 워치독 태스크의 핸들을 저장합니다.
 static TaskHandle_t xTaskHandle_CAN_Rx = NULL; // CAN 수신 태스크의 핸들을 저장합니다.
@@ -125,6 +124,11 @@ static QueueHandle_t xQueue_Sensor_Data = NULL; // 센서 데이터를 전달하
 
 static SemaphoreHandle_t xSemaphore_Actuator = NULL; // 액추에이터 자원 보호용 뮤텍스입니다.
 static SemaphoreHandle_t xMutex_Debug = NULL; // UART/printf 동시 접근 방지용 뮤텍스입니다.
+
+// 직전 부팅의 리셋 원인(RCC->CSR 상위 플래그)입니다. IWDG_Init() 으로 워치독을
+// 켜기 전에 읽어 두어야 하며, 디버거나 다음 부팅에서 워치독 리셋 여부를
+// 판별하는 근거가 됩니다. (통합 계층 보강)
+static volatile uint32_t ulResetCause = 0U; // 직전 리셋 원인 플래그를 보존합니다.
 
 // ---- 워치독 하트비트 및 업데이트 플래그 (수정 1) ---- 
 static volatile uint32_t ulHeartbeat_CAN_Rx = 0U; // CAN 수신 태스크의 하트비트 카운터입니다.
@@ -554,8 +558,38 @@ int main(void) // 프로그램 진입점 main 함수를 정의합니다.
 { // main 함수 본문을 시작합니다.
     BaseType_t xCreateResult = pdFAIL; // 태스크 생성 결과를 저장할 변수입니다.
 
-    SystemClock_Config(); // 시스템 클록을 설정합니다.
-    NVIC_PriorityGroupConfig(NVIC_PriorityGroup_4); // STM32 NVIC 우선순위 그룹을 설정합니다.
+    // ---- 통합 계층: HAL 초기화 (반드시 다른 어떤 HAL 호출보다 먼저) ----
+// HAL_Init() 은 (1) 플래시 프리페치/명령·데이터 캐시를 켜고, (2) NVIC 우선순위
+// 그룹을 4(서브 우선순위 없음)로 설정하며, (3) SysTick 을 1ms 타임베이스로
+// 시작하고 HAL_Delay()/HAL_GetTick() 이 동작하게 만듭니다.
+// 이 호출이 없으면 BMP280_Init() 안의 HAL_Delay(10) 이 영원히 반환하지 않고,
+// HAL 드라이버의 타임아웃 처리도 전부 무력화됩니다. 
+    HAL_Init(); // HAL 라이브러리와 1ms 타임베이스(SysTick)를 초기화합니다.
+
+    SystemClock_Config(); // 시스템 클록을 180MHz로 설정합니다.
+
+    // SystemClock_Config() 가 HCLK 를 16MHz(HSI) → 180MHz 로 바꾸었으므로
+// SysTick 재적재값을 새 클록에 맞춰 다시 계산해야 1ms 틱이 유지됩니다.
+// (HAL_RCC_ClockConfig() 내부에서 HAL_InitTick() 을 다시 호출하지만,
+//  SystemCoreClock 갱신과 함께 명시적으로 한 번 더 맞춰 둡니다.) 
+    SystemCoreClockUpdate(); // RCC 레지스터를 읽어 SystemCoreClock 전역을 갱신합니다.
+    (void)HAL_InitTick(TICK_INT_PRIORITY); // 새 클록 기준으로 HAL 타임베이스를 재설정합니다.
+
+    // HAL_Init() 이 이미 그룹 4로 설정하지만, 의존 관계를 코드에 남기기 위해
+// 명시적으로 한 번 더 호출합니다. FreeRTOS Cortex-M 포트는 "서브 우선순위 없음"
+// (모든 비트가 선점 우선순위)을 전제로 configMAX_SYSCALL_INTERRUPT_PRIORITY 를
+// 판정하므로 이 설정은 필수입니다.
+// 주의: NVIC_PriorityGroup_4 는 구형 SPL 매크로라 HAL 에는 존재하지 않습니다.
+//       HAL 의 NVIC_PRIORITYGROUP_4 를 사용해야 컴파일됩니다. (정적 증빙 결함 #2) 
+    NVIC_PriorityGroupConfig(NVIC_PRIORITYGROUP_4); // STM32 NVIC 우선순위 그룹을 4로 설정합니다.
+
+    // ---- 통합 계층: 독립 워치독 시작 ----
+// 워치독 태스크의 점검 주기는 100ms 이므로, 타임아웃은 그보다 충분히 큰 1초로
+// 잡습니다. IWDG 는 한 번 켜면 소프트웨어로 끌 수 없으므로 스케줄러 시작 직전에
+// 시작해야 하며, 리셋 원인 플래그는 켜기 전에 읽어 두어야 의미가 있습니다. 
+    ulResetCause = IWDG_GetResetFlags(); // 직전 리셋 원인(RCC->CSR 플래그)을 보존합니다.
+    IWDG_ClearResetFlags(); // 다음 부팅에서 원인을 구분할 수 있도록 플래그를 지웁니다.
+    IWDG_Init(1000U); // 독립 워치독을 1초 타임아웃으로 시작합니다.
 
     xQueue_ActuatorCmd = xQueueCreate(ACTUATOR_CMD_QUEUE_LEN, sizeof(ActuatorCmd_t)); // 액추에이터 명령 큐를 생성합니다.
     xQueue_Sensor_Data = xQueueCreate(SENSOR_DATA_QUEUE_LEN, sizeof(SensorData_t)); // 센서 데이터 큐를 생성합니다.
