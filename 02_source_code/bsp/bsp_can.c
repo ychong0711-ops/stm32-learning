@@ -106,6 +106,13 @@ BaseType_t CAN_Receive(CAN_Message_t *pxMsg, TickType_t xTimeout)  // CAN 수신
     return pdPASS;  // 수신 성공을 반환합니다.
 }  // CAN 수신 함수를 종료합니다.
 
+void *CAN_GetHandle(void)  // CAN1 HAL 핸들 접근자를 정의합니다.
+{  // 핸들 접근자 본문을 시작합니다.
+    // app/stm32f4xx_it.c 의 CAN1_RX0_IRQHandler() 가 HAL_CAN_IRQHandler() 에
+    // 넘길 핸들을 얻기 위해 사용합니다. 핸들 자체는 이 파일 안에 캡슐화된 상태로 둡니다.
+    return &s_hcan1;  // CAN1 HAL 핸들의 주소를 반환합니다.
+}  // 핸들 접근자를 종료합니다.
+
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)  // CAN RX FIFO0 메시지 대기 콜백(ISR)을 정의합니다.
 {  // 콜백 함수 본문을 시작합니다.
     CAN_RxHeaderTypeDef xRxHeader;  // 수신 헤더(ID, DLC 등)를 저장할 구조체입니다.

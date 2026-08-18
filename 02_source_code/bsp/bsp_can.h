@@ -18,4 +18,16 @@ BaseType_t CAN_Init(uint32_t ulBaudrate);  // CAN 컨트롤러를 지정 보레�
 void CAN_FilterConfig(uint32_t ulFilterId, uint32_t ulFilterMask);  // 수신 필터를 설정하는 함수 프로토타입입니다.
 BaseType_t CAN_Receive(CAN_Message_t *pxMsg, TickType_t xTimeout);  // CAN 메시지를 타임아웃 대기로 수신하는 함수 프로토타입입니다.
 
+// CAN1 의 HAL 핸들 주소를 반환합니다. app/stm32f4xx_it.c 의 CAN1_RX0_IRQHandler() 가
+// HAL_CAN_IRQHandler() 에 넘겨줄 핸들을 얻기 위해 사용합니다.
+// (핸들 자체는 bsp_can.c 안에 static 으로 캡슐화되어 있습니다)
+//
+// 반환 타입이 void* 인 이유:
+//   CAN_HandleTypeDef 는 HAL 설정(USE_HAL_CAN_REGISTER_CALLBACKS)에 따라
+//   'struct __CAN_HandleTypeDef' 이기도 하고 이름 없는 struct 이기도 합니다.
+//   전방 선언으로 맞추면 설정이 바뀔 때마다 타입 불일치 오류가 납니다.
+//   이 헤더가 HAL 전체를 끌어오지 않으면서도 안전하려면 void* 가 가장 낫습니다.
+//   호출부는 (CAN_HandleTypeDef *) 로 캐스팅해서 씁니다.
+void *CAN_GetHandle(void);  // CAN1 HAL 핸들 접근자 프로토타입입니다.
+
 #endif /* BSP_CAN_H */  // BSP_CAN_H 조건부 컴파일 블록을 종료합니다.

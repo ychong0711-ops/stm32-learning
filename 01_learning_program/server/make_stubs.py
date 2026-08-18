@@ -4,8 +4,12 @@
 실제 STM32CubeF4 HAL / FreeRTOS 헤더 없이도, 이 프로젝트의 코드가
 문법·타입적으로 올바른지 gcc 로 검사할 수 있게 한다. (기능 에뮬레이션 아님)"""
 import os
+import sys
 
-OUT = '/home/user/stubs'
+# 스텁은 이 스크립트 옆의 stubs/ 에 만든다. 예전에는 작성 당시의 절대 경로
+# (/home/user/stubs) 에 묶여 있어서 다른 곳에 체크아웃하면 동작하지 않았다.
+HERE = os.path.dirname(os.path.abspath(__file__))
+OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, 'stubs')
 os.makedirs(OUT, exist_ok=True)
 
 F = {}
@@ -54,6 +58,7 @@ BaseType_t xTaskCreate(void (*pxTaskCode)(void *), const char *pcName,
 void vTaskDelay(TickType_t xTicksToDelay);
 void vTaskDelayUntil(TickType_t *pxPreviousWakeTime, TickType_t xTimeIncrement);
 void vTaskSuspend(TaskHandle_t xTaskToSuspend);
+void vTaskResume(TaskHandle_t xTaskToResume);
 void vTaskSuspendAll(void);
 BaseType_t xTaskResumeAll(void);
 void vTaskStartScheduler(void);
@@ -320,7 +325,16 @@ typedef struct {
 #define FLASH_SECTOR_5 5U
 #define FLASH_SECTOR_6 6U
 #define FLASH_SECTOR_7 7U
+#define FLASH_BANK_1 1U
+#define FLASH_FLAG_EOP     0x00000001U
+#define FLASH_FLAG_OPERR   0x00000002U
+#define FLASH_FLAG_WRPERR  0x00000010U
+#define FLASH_FLAG_PGAERR  0x00000020U
+#define FLASH_FLAG_PGPERR  0x00000040U
+#define FLASH_FLAG_PGSERR  0x00000080U
+#define __HAL_FLASH_CLEAR_FLAG(x)                do { (void)(x); } while (0)
 HAL_StatusTypeDef HAL_FLASH_Unlock(void);
+HAL_StatusTypeDef HAL_FLASH_Lock(void);
 HAL_StatusTypeDef HAL_FLASHEx_Erase(FLASH_EraseInitTypeDef *pEraseInit, uint32_t *SectorError);
 HAL_StatusTypeDef HAL_FLASH_Program(uint32_t TypeProgram, uint32_t Address, uint32_t Data);
 #define __HAL_FLASH_DATA_CACHE_DISABLE()         do { } while (0)
@@ -384,6 +398,22 @@ HAL_StatusTypeDef HAL_RCC_ClockConfig(RCC_ClkInitTypeDef *RCC_ClkInitStruct, uin
 
 /* ---- delay ---- */
 void HAL_Delay(uint32_t Delay);
+
+/* ---- 코어 초기화 / 타임베이스 ---- */
+#define TICK_INT_PRIORITY 0x0FU
+HAL_StatusTypeDef HAL_Init(void);
+HAL_StatusTypeDef HAL_InitTick(uint32_t TickPriority);
+void HAL_IncTick(void);
+uint32_t HAL_GetTick(void);
+
+/* ---- CMSIS 시스템 심볼 ---- */
+extern uint32_t SystemCoreClock;
+void SystemCoreClockUpdate(void);
+
+/* ---- CMSIS 배리어 (호스트 검사에서는 no-op) ---- */
+#define __DSB() do { } while (0)
+#define __DMB() do { } while (0)
+#define __ISB() do { } while (0)
 
 #endif /* STM32F4XX_HAL_H */
 '''
