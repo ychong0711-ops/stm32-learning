@@ -1,0 +1,33 @@
+name: Deploy Learning Program
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node (for any build steps)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Verify learning program is HTML-only
+        run: |
+          echo "learning_program.html size: $(wc -c < learning_program.html) bytes"
+          echo "No build steps needed - HTML is self-contained"
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .
+          keep_files: true
+          force_push: true
+          enable_jekyll: false
