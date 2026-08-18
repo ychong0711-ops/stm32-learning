@@ -1,0 +1,207 @@
+{
+  "title": "시리얼 모터 컨트롤러 (STM32F1 + FreeRTOS 교육용)",
+  "notes": {
+    "src/motor_ctrl.c": "모터 제어 태스크 — 상태머신 + PWM 듀티 클램프 + 하트비트",
+    "src/serial_cmd.c": "시리얼 명령 파서 — '$' 프로토콜 + 체크섬 + 버퍼 오버플로 가드"
+  },
+  "files": [
+    {
+      "path": "src/motor_ctrl.c",
+      "content": "// motor_ctrl.c — 모터 제어 태스크 (STM32F1 + FreeRTOS, 교육용 예제)\n// STM32F103: Cortex-M3, 72MHz, TIM2 PWM 채널. F4(180MHz, TIM1)와 비교하며 보세요.\n#include \"task.h\" // FreeRTOS 태스크 API 를 포함합니다.\n#include \"semphr.h\" // 뮤텍스 API 를 포함합니다.\n#define PWM_DUTY_MAX 1000U // 듀티 범위 상한입니다. (0~1000 = 0.0~100.0%)\n#define MOTOR_CMD_ID_SHUTDOWN 0xE1U // 모터 정지 명령 ID 입니다.\nvoid Motor_SetDuty(uint16_t duty); // TIM2 PWM 듀티 적용 함수 선언입니다.\nvoid Motor_Stop(void); // 모터 정지(안전 상태) 함수 선언입니다.\nvoid UART_Send(const char *s); // UART 출력 함수 선언입니다.\nstatic uint16_t s_duty = 0; // 현재 듀티 값입니다. (태스크 전용)\nvoid vTask_Motor(void *pvParameters) // 모터 제어 태스크입니다.\n{ // 태스크 본문을 시작합니다.\n    const TickType_t xPeriod = pdMS_TO_TICKS(5U); // 5ms 제어 주기입니다.\n    TickType_t xLastWakeTime = xTaskGetTickCount(); // 정밀 주기용 기준 시각입니다.\n    for (;;) // 무한 루프입니다.\n    { // 루프 본문을 시작합니다.\n        uint16_t duty; // 수신된 듀티를 저장할 변수입니다.\n        if (xQueueReceive(xQueue_Cmd, &duty, 0) == pdPASS) // 명령 큐에서 듀티를 꺼냅니다.\n        { // 큐 수신 성공 시입니다.\n            if (duty > PWM_DUTY_MAX) duty = PWM_DUTY_MAX; // 듀티를 클램프합니다. (안전)\n            s_duty = duty; // 현재 듀티를 갱신합니다.\n            Motor_SetDuty(s_duty); // PWM 에 적용합니다.\n        } // 큐 수신 처리 블록을 종료합니다.\n        ulHeartbeat_Motor = (ulHeartbeat_Motor + 1U); // 워치독 하트비트를 증가시킵니다.\n        vTaskDelayUntil(&xLastWakeTime, xPeriod); // 정밀 주기를 유지합니다.\n    } // 루프 본문을 종료합니다.\n} // 태스크 함수를 종료합니다.\nvoid prvEmergencyMotorStop(void) // 긴급 정지 함수입니다.\n{ // 함수 본문을 시작합니다.\n    s_duty = 0; // 듀티를 0 으로 강제합니다.\n    Motor_Stop(); // 안전 상태(정지)를 적용합니다.\n    UART_Send(\"MOTOR STOP\"); // 상태를 출력합니다.\n} // 함수를 종료합니다.\n"
+    },
+    {
+      "path": "src/serial_cmd.c",
+      "content": "// serial_cmd.c — 시리얼 명령 파서 (STM32F1 + FreeRTOS, 교육용 예제)\n// 프로토콜: '$' 시작 + 1바이트 ID + 2바이트 데이터 + 1바이트 체크섬(XOR) 입니다.\n#include <stdint.h> // 고정 폭 정수 타입을 사용하기 위해 포함합니다.\n#define CMD_BUF_SIZE 16U // 명령 버퍼 크기입니다.\n#define CMD_START_CHAR '$' // 프레임 시작 문자입니다.\nstatic uint8_t s_buf[CMD_BUF_SIZE]; // 수신 버퍼입니다.\nstatic uint8_t s_len = 0; // 버퍼에 쌓인 바이트 수입니다.\nvoid UART_Send(const char *s); // UART 출력 함수 선언입니다.\nvoid Motor_SetDuty(uint16_t duty); // 듀티 적용 함수 선언입니다.\nvoid prvEmergencyMotorStop(void); // 긴급 정지 함수 선언입니다.\nstatic uint8_t checksum(const uint8_t *p, uint8_t n) // XOR 체크섬 계산 함수입니다.\n{ // 함수 본문을 시작합니다.\n    uint8_t x = 0; // 누적 XOR 값입니다.\n    for (uint8_t i = 0; i < n; i++) x ^= p[i]; // 모든 바이트를 XOR 합니다.\n    return x; // 계산 결과를 반환합니다.\n} // 함수를 종료합니다.\nvoid Serial_ParseByte(uint8_t c) // 바이트 단위 파서입니다. (USART1 ISR 에서 호출)\n{ // 함수 본문을 시작합니다.\n    if (c == CMD_START_CHAR) { s_len = 0; return; } // 프레임 시작이면 버퍼를 리셋합니다.\n    if (s_len >= CMD_BUF_SIZE) { s_len = 0; return; } // 오버플로 가드 — 버퍼를 버립니다.\n    s_buf[s_len++] = c; // 버퍼에 바이트를 저장합니다.\n    if (s_len == 4U) // 4바이트(채워진) 프레임이 모이면 처리합니다.\n    { // 프레임 처리 블록을 시작합니다.\n        uint8_t id = s_buf[0]; // 명령 ID 입니다.\n        uint8_t dl = s_buf[1]; // 데이터 하위 바이트입니다.\n        uint8_t dh = s_buf[2]; // 데이터 상위 바이트입니다.\n        uint8_t cs = s_buf[3]; // 체크섬 바이트입니다.\n        if (checksum(s_buf, 3) != cs) { s_len = 0; return; } // 체크섬 불일치 시 폐기합니다.\n        if (id == 0xE1U) { prvEmergencyMotorStop(); } // 긴급 정지 명령입니다.\n        else if (id == 0x01U) { Motor_SetDuty((uint16_t)((dh << 8) | dl)); } // 듀티 설정 명령입니다.\n        s_len = 0; // 버퍼를 초기화합니다.\n    } // 프레임 처리 블록을 종료합니다.\n} // 함수를 종료합니다.\n"
+    }
+  ],
+  "path": [
+    {
+      "id": "A1",
+      "icon": "⚙️",
+      "t": "구조 파악 (태스크 + 상태머신)",
+      "goal": "태스크-큐 분리가 모터 제어의 안전성을 만드는 구조를 이해한다",
+      "concept": [
+        "명령은 큐를 통해서만 태스크로 전달된다 — 다른 태스크가 변수를 직접 조작할 수 없다.",
+        "5ms 제어 주기와 하트비트 증가로 워치독이 태스크 생존을 감시한다."
+      ],
+      "reads": [
+        {
+          "file": "src/motor_ctrl.c",
+          "line": 13,
+          "fn": "vTask_Motor",
+          "why": "모터 제어 태스크 — 큐 수신 → 클램프 → 적용"
+        }
+      ],
+      "activity": "코드 학습 탭에서 motor_ctrl.c 를 읽고, 태스크가 어떤 데이터를 어떤 방식으로 받는지 정리하세요."
+    },
+    {
+      "id": "A2",
+      "icon": "🔤",
+      "t": "시리얼 프로토콜 (파싱 + 오류 처리)",
+      "goal": "바이트 스트림에서 신뢰성 있는 프레임을 추출하는 법을 안다",
+      "concept": [
+        "'$' 시작 문자로 프레임을 동기화하고, 체크섬(XOR)으로 손상을 감지한다.",
+        "버퍼 오버플로는 조용한 실패를 만든다 — 가드로 버리고 계속한다."
+      ],
+      "reads": [
+        {
+          "file": "src/serial_cmd.c",
+          "line": 17,
+          "fn": "Serial_ParseByte",
+          "why": "바이트 파서 — 오버플로 가드와 체크섬 검증"
+        }
+      ],
+      "activity": "시리얼 파서를 읽고, '$ 01 2C 01 2C' 프레임이 어떻게 처리되는지 종이에 그려보세요."
+    },
+    {
+      "id": "A3",
+      "icon": "🛡️",
+      "t": "안전 설계 (클램프 + 긴급정지)",
+      "goal": "입력 오류가 물리적 위험으로 이어지지 않도록 막는 관점을 안다",
+      "concept": [
+        "듀티 클램프: 프로토콜 오류로 1500 이 들어와도 1000 을 넘지 않는다.",
+        "긴급 정지는 파서에서 직접 호출되어 다른 태스크를 거치지 않는다."
+      ],
+      "reads": [
+        {
+          "file": "src/motor_ctrl.c",
+          "line": 28,
+          "fn": "prvEmergencyMotorStop",
+          "why": "안전 상태 적용 — 정지 + 출력"
+        }
+      ],
+      "activity": "클램프가 없다면 어떤 고장이 발생할 수 있는지 시나리오를 써보세요."
+    }
+  ],
+  "quiz": [
+    {
+      "m": "A1",
+      "q": "STM32F103 의 CPU 코어와 최대 클럭은?",
+      "o": [
+        "Cortex-M4, 180MHz",
+        "Cortex-M3, 72MHz",
+        "Cortex-M0, 48MHz",
+        "Cortex-A7, 1GHz"
+      ],
+      "a": 1,
+      "w": "STM32F1 계열은 Cortex-M3 기반이며 최대 72MHz 입니다. (F4 는 Cortex-M4 180MHz)"
+    },
+    {
+      "m": "A1",
+      "q": "모터 제어 태스크가 명령을 받는 방법은?",
+      "o": [
+        "전역 변수 직접 읽기",
+        "명령 큐(xQueueReceive)",
+        "함수 포인터",
+        "인터럽트 플래그"
+      ],
+      "a": 1,
+      "w": "태스크 간 통신은 큐로만 이루어집니다 — 이 원칙이 데이터 경합을 원천 차단합니다."
+    },
+    {
+      "m": "A2",
+      "q": "시리얼 파서에서 버퍼 오버플로 가드의 위치는?",
+      "o": [
+        "프레임 시작 시",
+        "바이트 저장 전",
+        "체크섬 검증 후",
+        "없음"
+      ],
+      "a": 1,
+      "w": "s_len >= CMD_BUF_SIZE 확인을 저장 전에 합니다 — 넘치면 버리고 리셋합니다."
+    },
+    {
+      "m": "A3",
+      "q": "듀티 클램프의 목적은?",
+      "o": [
+        "성능 향상",
+        "프로토콜 오류로 인한 비정상 듀티 차단",
+        "전력 절감",
+        "타이머 초기화"
+      ],
+      "a": 1,
+      "w": "1500 같은 비정상 값이 들어와도 1000(최대)을 넘지 않게 합니다 — 물리적 위험 방지."
+    }
+  ],
+  "subquiz": [
+    {
+      "m": "A1",
+      "q": "STM32F1 계열의 CPU 코어는?",
+      "a": [
+        "Cortex-M3",
+        "cortex m3"
+      ],
+      "hint": "F4는 M4, F1은?"
+    },
+    {
+      "m": "A2",
+      "q": "시리얼 프레임의 시작 문자는?",
+      "a": [
+        "$"
+      ],
+      "hint": "프로토콜 정의에서 찾아보세요."
+    },
+    {
+      "m": "A3",
+      "q": "긴급 정지 명령 ID 는?",
+      "a": [
+        "0xE1",
+        "E1",
+        "225"
+      ],
+      "hint": "0xE1 = 225"
+    }
+  ],
+  "missions": [
+    {
+      "id": 1,
+      "t": "버퍼 오버플로 가드 채우기",
+      "lv": "쉬움",
+      "learn": "오버플로는 조용한 실패 — 저장 전에 가드로 차단",
+      "marker": "/* ==== 여기에 코드를 작성하세요 ==== */",
+      "must": "s_len = 0;",
+      "hint": "s_len 이 버퍼 크기 이상이면 버퍼를 버려야 합니다: s_len = 0; return;",
+      "template": "// 미션 1: 버퍼 오버플로를 막는 가드를 채우세요.\n#include <stdint.h>\n#define CMD_BUF_SIZE 16U\nstatic uint8_t s_buf[CMD_BUF_SIZE];\nstatic uint8_t s_len = 0;\nvoid Serial_ParseByte(uint8_t c)\n{\n    if (s_len >= CMD_BUF_SIZE)\n    {\n        /* ==== 여기에 코드를 작성하세요 ==== */\n        return;\n    }\n    s_buf[s_len++] = c;\n}\n",
+      "solution": "// 미션 1: 버퍼 오버플로를 막는 가드를 채우세요.\n#include <stdint.h>\n#define CMD_BUF_SIZE 16U\nstatic uint8_t s_buf[CMD_BUF_SIZE];\nstatic uint8_t s_len = 0;\nvoid Serial_ParseByte(uint8_t c)\n{\n    if (s_len >= CMD_BUF_SIZE)\n    {\n        s_len = 0;\n        return;\n    }\n    s_buf[s_len++] = c;\n}\n"
+    },
+    {
+      "id": 2,
+      "t": "듀티 클램프 채우기",
+      "lv": "중간",
+      "learn": "입력 값 검증으로 물리적 위험 차단",
+      "marker": "/* ==== 여기에 코드를 작성하세요 ==== */",
+      "must": "PWM_DUTY_MAX",
+      "hint": "duty 가 PWM_DUTY_MAX 를 넘으면 PWM_DUTY_MAX 로 고정하세요.",
+      "template": "// 미션 2: 듀티 값을 안전 범위로 클램프하세요.\n#define PWM_DUTY_MAX 1000U\nvoid Motor_SetDuty(unsigned int duty)\n{\n    if (duty > PWM_DUTY_MAX)\n    {\n        /* ==== 여기에 코드를 작성하세요 ==== */\n    }\n}\n",
+      "solution": "// 미션 2: 듀티 값을 안전 범위로 클램프하세요.\n#define PWM_DUTY_MAX 1000U\nvoid Motor_SetDuty(unsigned int duty)\n{\n    if (duty > PWM_DUTY_MAX)\n    {\n        duty = PWM_DUTY_MAX;\n    }\n}\n"
+    }
+  ],
+  "rta": [
+    {
+      "name": "CmdParse",
+      "T": 5,
+      "C": 0.3,
+      "p": 4,
+      "D": 5
+    },
+    {
+      "name": "MotorCtrl",
+      "T": 5,
+      "C": 0.8,
+      "p": 3,
+      "D": 5
+    },
+    {
+      "name": "Heartbeat",
+      "T": 100,
+      "C": 0.2,
+      "p": 2,
+      "D": 100
+    }
+  ],
+  "schedTasks": [
+    { "name": "CmdParse", "T": 5, "C": 0.3, "p": 4 },
+    { "name": "MotorCtrl", "T": 5, "C": 0.8, "p": 3 },
+    { "name": "Heartbeat", "T": 100, "C": 0.2, "p": 2 }
+  ]
+}

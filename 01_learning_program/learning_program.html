@@ -81,6 +81,7 @@
     <button data-s="missions">🎯 코딩 과제</button>
     <button data-s="sim">🧪 시뮬레이터</button>
     <button data-s="irq">🎚️ 인터럽트</button>
+    <button data-s="sched">⏱️ 스케줄러</button>
     <button data-s="bundle">📦 프로젝트</button>
     <button data-s="calc">🧮 임베디드 계산기</button>
   </nav>
@@ -90,12 +91,12 @@
 <!-- ============ HOME ============ -->
 <section id="home" class="on">
   <h1>학습 로드맵</h1>
-  <p class="dim">아래 6개 모듈을 순서대로 진행하세요. 체크는 현재 세션에서만 유지됩니다(새로고침 시 초기화 — 미리보기 제약).</p>
+  <p class="dim">아래 6개 모듈을 순서대로 진행하세요. 체크는 브라우저에 저장됩니다(새로고침해도 유지).</p>
   <div class="bar"><i id="pbar"></i></div>
   <div id="progress" class="card"></div>
   <div class="card" id="dailyCard">
-    <h2>☀️ 오늘의 30분 학습 루프</h2>
-    <p class="dim">아래 순서대로 진행하세요. 완료 시 체크하면 진행률이 표시됩니다. (읽기→작성→회상→훈련)</p>
+    <h2>☀️ 오늘의 30분 학습 루프 <span id="dailyStreak" class="dim"></span></h2>
+    <p class="dim">아래 순서대로 진행하세요. 완료 시 체크하면 진행률이 표시됩니다. (읽기→작성→회상→훈련) 체크 상태는 브라우저에 저장됩니다.</p>
     <div class="chk"><input type="checkbox" onchange="dailyProgress()"><div><b>1️⃣ 읽기 (5분)</b> — 학습 경로에서 오늘의 모듈 읽기 <button class="ghost" style="padding:3px 8px;margin-left:8px" onclick="goTab('path')">이동</button></div></div>
     <div class="chk"><input type="checkbox" onchange="dailyProgress()"><div><b>2️⃣ 작성 (10분)</b> — 코딩 과제 1개 풀기 <button class="ghost" style="padding:3px 8px;margin-left:8px" onclick="goTab('missions')">이동</button></div></div>
     <div class="chk"><input type="checkbox" onchange="dailyProgress()"><div><b>3️⃣ 회상 (5분)</b> — 주관식 퀴즈 <button class="ghost" style="padding:3px 8px;margin-left:8px" onclick="goTab('quiz');setQuizMode('sa')">이동</button></div></div>
@@ -201,6 +202,7 @@
     <label class="dim">모듈 필터:</label>
     <select id="quizMod">
       <option value="all">전체</option>
+      <option value="due">🔁 복습할 문제 (간격 반복)</option>
       <option value="M1">M1 코드 리뷰</option>
       <option value="M2">M2 안전 재설계</option>
       <option value="M3">M3 BSP/HAL</option>
@@ -208,9 +210,10 @@
       <option value="M5">M5 실측 방법론</option>
       <option value="M6">M6 AUTOSAR/ISO 26262</option>
     </select>
+    <div id="weakPanel" class="card" style="margin-bottom:12px"></div>
     <div id="quizModeBar" style="margin:10px 0">
       <button class="act" id="mcBtn" onclick="setQuizMode('mc')">객관식 18문항</button>
-      <button class="ghost" id="saBtn" onclick="setQuizMode('sa')">주관식 10문항</button>
+      <button class="ghost" id="saBtn" onclick="setQuizMode('sa')">주관식 27문항</button>
     </div>
     <div id="quizWrap"></div>
     <div id="quizSubWrap" style="display:none"></div>
@@ -249,8 +252,9 @@
 
 <!-- ============ MISSIONS ============ -->
 <section id="missions">
-  <h1>🎯 코딩 과제 (빈칸 채우기)</h1>
-  <p class="dim">이 프로젝트의 <b>수정 사항(안전 결함 수정)</b>을 직접 한 줄씩 작성해 봅니다. <b>검증</b>은 오프라인으로, <b>gcc 확인</b>은 서버로 컴파일합니다. "정답 보기"는 꼭 시도한 뒤에 누르세요.</p>
+  <h1>🎯 코딩 과제 (빈칸 채우기 · 버그 찾기 · 버그 수정)</h1>
+  <p class="dim">3가지 유형을 제공합니다. <b>① 빈칸 채우기</b> — 안전 결함 수정 코드를 한 줄씩 작성. <b>② 버그 찾기</b> — 결함이 있는 코드에서 문제를 직접 발견하고 설명. <b>③ 버그 수정</b> — 결함 코드를 고쳐 안전한 코드로 교정. <b>검증</b>은 오프라인으로, <b>gcc 확인</b>은 서버로 컴파일합니다. "정답 보기"는 꼭 시도한 뒤에 누르세요.</p>
+  <div id="misReview"></div>
   <div id="missionWrap"></div>
 </section>
 
@@ -410,6 +414,46 @@
   </div>
 </section>
 
+<!-- ============ SCHEDULER SIM ============ -->
+<section id="sched">
+  <h1>⏱️ FreeRTOS 스케줄러 시뮬레이터</h1>
+  <p class="dim">선점형 고정 우선순위 스케줄링을 시각화합니다. <b>숫자가 클수록 높은 우선순위</b>이며, 높은 우선순위 태스크가 도착하면 실행 중인 태스크를 즉시 선점합니다. 시나리오를 바꿔가며 데드라인 위반이 언제 생기는지 확인하세요.</p>
+  <div class="card">
+    <div style="margin-bottom:10px">
+      <button class="act" onclick="schedLoad('normal')">✅ 정상 부하</button>
+      <button class="ghost" onclick="schedLoad('emergency')">🚨 긴급정지 이벤트</button>
+      <button class="ghost" onclick="schedLoad('overload')">🔥 과부하</button>
+    </div>
+    <div id="schedDesc" class="dim" style="margin-bottom:8px"></div>
+    <canvas id="schedCanvas" width="940" height="300" style="width:100%;background:#0b1120;border:1px solid var(--line);border-radius:10px"></canvas>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="act" id="schedPlayBtn" onclick="schedToggle()">▶ 재생</button>
+      <button class="ghost" onclick="schedStep()">⏭ 한 스텝</button>
+      <button class="ghost" onclick="schedReset()">↺ 리셋</button>
+      <span class="dim">속도:
+        <select id="schedSpeed" style="background:#0b1120;color:#d6e4ff;border:1px solid var(--line);border-radius:7px;padding:5px" onchange="schedSpeed=+this.value">
+          <option value="2">2x</option><option value="4" selected>4x</option><option value="10">10x</option>
+        </select>
+      </span>
+      <span id="schedNow" class="dim" style="margin-left:auto;font-weight:bold;color:var(--acc2)"></span>
+    </div>
+    <div style="margin-top:10px;display:flex;gap:16px;flex-wrap:wrap">
+      <span class="dim">CPU 이용률(전체): <b id="schedUtil"></b></span>
+      <span class="dim">데드라인 위반: <b id="schedMiss" style="color:var(--crit)"></b></span>
+      <span class="dim">현재 실행: <b id="schedRunning"></b></span>
+    </div>
+    <div id="schedLog" style="margin-top:10px;font-size:13px"></div>
+  </div>
+  <div class="card">
+    <h2>🎓 이것이 왜 중요한가</h2>
+    <ul class="dim" style="margin:0;padding-left:18px;line-height:1.7">
+      <li><b>선점(preemption)</b>: 높은 우선순위 태스크가 도착하면 실행 중이던 태스크를 즉시 중단시킵니다 — Watchdog(6)·CAN_Rx(5)가 Sensor(3)를 반복 선점하는 모습을 보세요.</li>
+      <li><b>긴급정지가 최우선</b>: 안전 태스크(긴급정지)는 어떤 태스크보다 높아야 하며, 이벤트 발생 시 즉시 안전 상태를 적용할 수 있어야 합니다.</li>
+      <li><b>과부하 시 굶어 죽음</b>: 이용률이 100%를 넘으면 낮은 우선순위 태스크부터 데드라인을 놓칩니다. RTA 계산기로 미리 검증하세요.</li>
+    </ul>
+  </div>
+</section>
+
 <!-- ============ BUNDLE ============ -->
 <section id="bundle">
   <h1>📦 프로젝트 로드 (임베디드 전용 범용화)</h1>
@@ -417,8 +461,9 @@
   <div class="grid">
     <div class="card">
       <h2>① 샘플 번들 (1클릭)</h2>
-      <p class="dim">다른 프로젝트(온도 경보 시스템)가 로드되는 것을 확인하세요.</p>
+      <p class="dim">다른 프로젝트(온도 경보/STM32F1 모터 제어)가 로드되는 것을 확인하세요.</p>
       <button class="act" onclick="loadSampleBundle()">📦 샘플 프로젝트 로드</button>
+      <button class="ghost" onclick="loadSampleF1()">⚙️ STM32F1 샘플 로드 (Cortex-M3)</button>
       <button class="ghost" onclick="restoreOriginal()">↺ 원래 교재 복원</button>
     </div>
     <div class="card">
@@ -462,7 +507,27 @@
 ============================================================ */
 const state = { progress:{} };
 function saveState(){ try{ localStorage.setItem('rtos_learn', JSON.stringify(state.progress)); }catch(e){} }
-function loadState(){ try{ const s=localStorage.getItem('rtos_learn'); if(s) state.progress=JSON.parse(s); }catch(e){} }
+function loadState(){ try{ const s=localStorage.getItem('rtos_learn'); if(s) state.progress=JSON.parse(s); }catch(e){} if(!state.progress.srs) state.progress.srs={q:[],s:[]}; }
+/* 간격 반복(SRS) 헬퍼 — q=객관식(QUIZ), s=주관식(SUBQUIZ) 각 원소 {ok,total,due,last} */
+function srsInterval(ok){ const iv=[1,3,7,14,30]; return iv[Math.min(Math.max(0,ok-1),iv.length-1)]; }
+function srsEnsure(){
+  if(!state.progress.srs) state.progress.srs={q:[],s:[]};
+  const S=state.progress.srs, mk=()=>({ok:0,total:0,due:0,last:0});
+  /* QUIZ/SUBQUIZ는 const — 스크립트 로드 중간(예: 초기 renderQuiz)에는 아직 TDZ일 수 있어 try로 감싼다 */
+  let ql=0, sl=0;
+  try{ ql=QUIZ.length; }catch(e){}
+  try{ sl=SUBQUIZ.length; }catch(e){}
+  while(S.q.length<ql) S.q.push(mk());
+  while(S.s.length<sl) S.s.push(mk());
+}
+function srsMark(arr, idx, correct){
+  srsEnsure();
+  const e=arr[idx]; const now=Date.now();
+  if(correct===true){ e.ok++; e.due=now+srsInterval(e.ok)*86400000; }
+  else{ e.ok=0; e.due=now; }
+  e.total++; e.last=now;
+  saveState();
+}
 function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 /* ============================================================
@@ -505,6 +570,7 @@ function renderProgress(){
   document.getElementById('pbar').style.width=(done/MODULES.length*100)+'%';
 }
 renderProgress();
+dailyInit();
 
 /* ============================================================
    코드 학습 — 주석 달린 발췌
@@ -1024,36 +1090,97 @@ const QUIZ=[
 ];
 function renderQuiz(){
   const m=document.getElementById('quizMod').value;
-  const list=(m==='all')?QUIZ:QUIZ.filter(q=>q.m===m);
+  srsEnsure();
+  let items=QUIZ.map((q,i)=>({q,i}));
+  if(m!=='all') items=items.filter(it=> m==='due' ? (state.progress.srs.q[it.i].due<=Date.now()) : it.q.m===m);
   const wrap=document.getElementById('quizWrap');
   wrap.innerHTML='';
-  list.forEach((q,qi)=>{
+  items.forEach(it=>{
+    const q=it.q, qi=it.i;
+    const rec=state.progress.srs.q[qi];
     const d=document.createElement('div'); d.className='q'; d.id='q'+qi;
     let h=`<b>${q.m}</b> ${q.q}<br>`;
+    if(rec.total>0) h+=`<span class="dim">복습 ${rec.total}회차 · 연속정답 ${rec.ok}</span><br>`;
     q.o.forEach((o,oi)=>{ h+=`<label><input type="radio" name="q${qi}" value="${oi}"> ${o}</label>`; });
     h+=`<div class="exp" id="exp${qi}">✔ ${q.w}</div>`;
     d.innerHTML=h; wrap.appendChild(d);
   });
-  document.getElementById('quizScore').innerHTML='';
+  if(m==='due'){
+    document.getElementById('quizScore').innerHTML=`<div class="card"><b>🔁 복습 대상 ${items.length}문항</b> <span class="dim">(간격 반복 — 오늘 복습이 필요한 문제)</span></div>`;
+  } else {
+    document.getElementById('quizScore').innerHTML='';
+  }
 }
 document.getElementById('quizMod').addEventListener('change',renderQuiz);
 renderQuiz();
 function gradeQuiz(){
   const m=document.getElementById('quizMod').value;
-  const list=(m==='all')?QUIZ:QUIZ.filter(q=>q.m===m);
+  srsEnsure();
+  let items=QUIZ.map((q,i)=>({q,i}));
+  if(m!=='all') items=items.filter(it=> m==='due' ? (state.progress.srs.q[it.i].due<=Date.now()) : it.q.m===m);
   let score=0;
-  list.forEach((q,qi)=>{
+  items.forEach(it=>{
+    const q=it.q, qi=it.i;
     const sel=document.querySelector(`input[name="q${qi}"]:checked`);
     const box=document.getElementById('q'+qi);
     const exp=document.getElementById('exp'+qi);
     exp.classList.add('show');
-    if(sel && +sel.value===q.a){ score++; box.classList.add('right'); box.classList.remove('wrong'); }
+    const correct=!!(sel && +sel.value===q.a);
+    if(correct){ score++; box.classList.add('right'); box.classList.remove('wrong'); }
     else { box.classList.add('wrong'); box.classList.remove('right'); }
     exp.innerHTML='✔ 정답: '+q.o[q.a]+'<br><span class="dim">'+q.w+'</span>';
+    srsMark(state.progress.srs.q, qi, correct);
   });
-  document.getElementById('quizScore').innerHTML=`<div class="card"><h2>결과: ${score} / ${list.length}</h2>
-    <div class="bar"><i style="width:${score/list.length*100}%"></i></div>
-    <p class="dim">${score===list.length?'완벽합니다! 다음 모듈로 넘어가세요.':(score>=list.length*0.7?'좋습니다. 틀린 문제의 해설을 다시 읽어보세요.':'해당 모듈의 코드/문서를 다시 학습한 뒤 재도전하세요.')}</p></div>`;
+  const n=items.length;
+  document.getElementById('quizScore').innerHTML=`<div class="card"><h2>결과: ${score} / ${n}</h2>
+    <div class="bar"><i style="width:${n?score/n*100:0}%"></i></div>
+    <p class="dim">${n&&score===n?'완벽합니다! 다음 모듈로 넘어가세요.':(n&&score>=n*0.7?'좋습니다. 틀린 문제의 해설을 다시 읽어보세요.':'해당 모듈의 코드/문서를 다시 학습한 뒤 재도전하세요.')}</p>
+    <p class="dim">틀린 문제는 오늘 다시 복습 목록에 들어갑니다.</p></div>`;
+  renderWeak();
+}
+function renderWeak(){
+  srsEnsure();
+  const panel=document.getElementById('weakPanel');
+  if(!panel) return;
+  const now=Date.now();
+  const agg={};
+  MODULES.forEach(m=>{ agg[m.id]={tried:0,ok:0,due:0}; });
+  const acc=(arr,qarr)=>{
+    arr.forEach((r,i)=>{
+      const mod=qarr[i]&&qarr[i].m;
+      if(!mod||!agg[mod]) return;
+      agg[mod].tried+=r.total;
+      if(r.ok>0) agg[mod].ok++;
+      if(r.due>0 && r.due<=now) agg[mod].due++;
+    });
+  };
+  acc(state.progress.srs.q,QUIZ);
+  acc(state.progress.srs.s,SUBQUIZ);
+  let allTried=0, allOk=0, allDue=0;
+  MODULES.forEach(m=>{ const g=agg[m.id]; allTried+=g.tried; allOk+=g.ok; allDue+=g.due; });
+  const allPct=allTried>0?Math.round(allOk/allTried*100):0;
+  let h='<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">'+
+    '<b>📊 약점 진단</b> <span class="dim">'+(allTried>0?('전체 정답률 '+allPct+'%'):'아직 퀴즈 기록이 없습니다')+' · 복습 대기 '+allDue+'문항</span></div>';
+  if(allDue>0){
+    h+='<div style="margin-top:8px"><button class="act" onclick="document.getElementById(\'quizMod\').value=\'due\'; renderQuiz(); if(state.quizMode!==\'mc\') setQuizMode(\'mc\');">🔁 복습 시작 ('+allDue+'문항)</button></div>';
+  }
+  MODULES.forEach(m=>{
+    const g=agg[m.id];
+    const pct=g.tried>0?Math.round(g.ok/g.tried*100):null;
+    const color=pct===null?'#44517a':(pct>=80?'var(--acc2)':(pct>=50?'var(--warn)':'var(--crit)'));
+    const barW=pct===null?0:pct;
+    const pctTxt=pct===null?'아직 미응시':(pct+'%');
+    const dueTxt=g.due>0?'<span class="pill warn">복습 대기 '+g.due+'문항</span> <span class="pill crit">🔁 복습하세요</span>':'';
+    h+='<div style="margin:10px 0">'+
+      '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center">'+
+        '<span><b>'+m.id+'</b> '+m.t+'</span>'+
+        '<span class="dim">'+pctTxt+(g.tried>0?' · 시도 '+g.tried+'회':'')+'</span>'+
+      '</div>'+
+      '<div class="bar"><i style="width:'+barW+'%;background:'+color+'"></i></div>'+
+      (dueTxt?'<div>'+dueTxt+'</div>':'')+
+    '</div>';
+  });
+  panel.innerHTML=h;
 }
 
 
@@ -1094,7 +1221,8 @@ const PATH=[
    {file:'docs/docs_realtime_theory_proof.md',line:1,fn:'증명 문서',why:'정리 4개 증명 스케치 + 태스크셋 판정'},
    {file:'rta_analysis.py',line:1,fn:'계산 스크립트',why:'실제 계산 코드 (파이썬)'}
   ],
-  activity:'RTA 계산기 탭에서 Debug 의 C 를 6→0.1 로 바꿔보고 이용률 변화를 확인하세요.'},
+  activity:'RTA 계산기 탭에서 Debug 의 C 를 6→0.1 로 바꿔보고 이용률 변화를 확인하세요.',
+  tools:[{tab:'rta', label:'📐 RTA 계산기 열기'},{tab:'sched', label:'⏱️ 스케줄러 시뮬레이터 열기'}]},
  {id:'M5',icon:'📏',t:'실측 방법론',
   goal:'"돌아간다"가 아니라 "측정된다"로 승격',
   concept:['스택: uxTaskGetStackHighWaterMark() — 최악 시나리오에서 측정해야 의미가 있다.','안전 판정은 평균이 아니라 최악값(WCET) 기준이다.'],
@@ -1130,6 +1258,9 @@ function renderPath(){
       });
     }
     h+='<h2>실습</h2><p class="dim">'+m.activity+'</p>';
+    if(m.tools && m.tools.length){
+      h+='<div style="margin:8px 0">'+m.tools.map(t=>'<button class="ghost" onclick="goTab(\''+t.tab+'\')">'+t.label+'</button>').join(' ')+'</div>';
+    }
     h+='<div class="chk"><input type="checkbox" '+(on?'checked':'')+' data-m="'+m.id+'"><div><b>이 모듈 완료</b> <span class="dim">(홈 진도표에 반영)</span></div></div>';
     card.innerHTML=h;
     card.querySelector('input').addEventListener('change',e=>{ state.progress[m.id]=e.target.checked; saveState(); renderProgress(); });
@@ -1177,7 +1308,24 @@ const SUBQUIZ=[
  {m:'M3',q:'NUCLEO-F446RE 에서 CAN1 RX 핀은 어디인가요?',a:['pb8'],hint:'CAN1_TX 는 PB9 입니다.'},
  {m:'M3',q:'printf 가 USART2 로 출력되도록 재정의하는 newlib 함수 이름은?',a:['_write','write'],hint:'밑줄(_)로 시작하는 표준 출력 함수입니다.'},
  {m:'M6',q:'ISO 26262 에서 가장 엄격한 ASIL 등급은?',a:['asild','asil d','d'],hint:'QM < A < B < C < ?'},
- {m:'M6',q:'전용 워치독 태스크의 하트비트 감시에 대응하는 ISO 26262 안전 메커니즘은?',a:['programflowmonitoring','프로그램흐름감시','프로그램 흐름 감시','흐름감시'],hint:'영문 약자 P.F.M — 프로그램 흐름 감시.'}
+ {m:'M6',q:'전용 워치독 태스크의 하트비트 감시에 대응하는 ISO 26262 안전 메커니즘은?',a:['programflowmonitoring','프로그램흐름감시','프로그램 흐름 감시','흐름감시'],hint:'영문 약자 P.F.M — 프로그램 흐름 감시.'},
+ {m:'M1',q:'원본 코드에서 큐 전송 실패 시 썼던 빈 문장(에러 무시)은?',a:[';','세미콜론','semicolon'],hint:'한 글자 문장부호입니다.'},
+ {m:'M1',q:'긴급 정지 CAN ID(0x123) 수신 시 수정판에서 즉시 호출하는 함수는?',a:['prvemergencystop','emergencystop','긴급정지함수'],hint:'prv 로 시작하는 즉시 안전 상태 함수입니다.'},
+ {m:'M2',q:'전용 워치독 태스크가 피드 전에 각 태스크에서 비교하는 생존 신호 변수들의 공통 접두어는?',a:['ulheartbeat','heartbeat','하트비트'],hint:'ulHeartbeat_* 형식입니다.'},
+ {m:'M2',q:'펌웨어 업데이트 중 워치독이 오탐 리셋하지 않도록 무조건 피드 모드를 켜는 플래그 이름은?',a:['xfirmwareupdateactive','firmwareupdate','업데이트플래그'],hint:'x 로 시작하는 불리언 플래그입니다.'},
+ {m:'M2',q:'긴급 정지 시 스로틀 듀티를 0 으로 만드는 PWM 채널 심볼은?',a:['pwm_channel_throttle','throttle','스로틀'],hint:'BSP_PWM_CHANNEL_ 로 시작합니다.'},
+ {m:'M3',q:'bsp_can.c 의 CAN 수신 링버퍼 크기(CAN_RX_RING_SIZE)는 몇 개인가요?',a:['16','16개'],hint:'2의 거듭제곱 크기입니다.'},
+ {m:'M3',q:'CAN 수신 ISR 이 저장한 프레임을 태스크에 알릴 때 사용하는 FreeRTOS 동기화 객체는?',a:['세마포어','semaphore','이진세마포어','binarysemaphore'],hint:'ISR 이 give 하고 태스크가 take 합니다.'},
+ {m:'M3',q:'BMP280 의 I2C 7bit 주소는?',a:['0x76','76'],hint:'SDO 핀 연결에 따라 0x76 또는 0x77 입니다.'},
+ {m:'M4',q:'n=6 일 때 Liu–Layland 상한 n(2^(1/n)−1) 의 백분율은?',a:['73.48','73.48%','73.5','0.7348'],hint:'6×(2^(1/6)−1) × 100 입니다.'},
+ {m:'M4',q:'RTA 판정식 R ≤ D 에서 D 는 무엇인가요?',a:['데드라인','deadline','마감기한','상대마감기한'],hint:'Relative Deadline 의 약자입니다.'},
+ {m:'M4',q:'Bini 쌍곡선 상한 판정식 ∏(Ui+1) 의 통과 기준값은?',a:['2','2이하','<=2'],hint:'∏(Ui+1) ≤ ? 이면 충분조건 통과입니다.'},
+ {m:'M5',q:'주기 지터 측정용 GPIO 토글 핀 MEAS_JITTER 의 논리 ID 값은?',a:['20','20u'],hint:'BSP_GPIO_PIN_MEAS_JITTER 매크로 값입니다.'},
+ {m:'M5',q:'긴급정지 E2E 응답시간 판정은 평균이 아니라 무엇 기준인가요?',a:['최악값','worstcase','worst case','wcet','최악'],hint:'안전 시스템은 최대 지연으로 판정합니다.'},
+ {m:'M6',q:'AUTOSAR 에서 SWC 간 통신을 중계하는 Runtime Environment 의 약자는?',a:['rte','runtimeenvironment'],hint:'Runtime Environment 의 머리글자입니다.'},
+ {m:'M6',q:'HARA 의 세 가지 요소는 S(심각도), E(노출), 그리고 무엇인가요?',a:['c','controllability','제어가능성'],hint:'C 로 시작하는 "제어 가능성"입니다.'},
+ {m:'M6',q:'AUTOSAR Classic Platform 의 구현 언어는?',a:['c','c언어'],hint:'단일 문자 언어명입니다.'},
+ {m:'M6',q:'긴급정지(즉시 안전 상태 적용)에 대응하는 ISO 26262 개념은?',a:['safestate','safe state','안전상태','안전 상태'],hint:'Safety Goal 위반 시 진입하는 상태입니다.'},
 ];
 
 function norm(s){ return (s||'').toLowerCase().replace(/[\s_()\[\].]/g,''); }
@@ -1199,13 +1347,21 @@ function setQuizMode(m){
   }
 }
 function renderSubQuiz(){
+  srsEnsure();
+  const m=document.getElementById('quizMod').value;
+  let items=SUBQUIZ.map((q,i)=>({q,i}));
+  if(m!=='all') items=items.filter(it=> m==='due' ? (state.progress.srs.s[it.i].due<=Date.now()) : it.q.m===m);
   const wrap=document.getElementById('quizSubWrap');
   wrap.innerHTML='';
-  SUBQUIZ.forEach((q,qi)=>{
+  items.forEach(it=>{
+    const q=it.q, qi=it.i;
+    const rec=state.progress.srs.s[qi];
     const d=document.createElement('div'); d.className='q'; d.id='sq'+qi;
+    let hintTxt='힌트: '+q.hint;
+    if(rec.total>0) hintTxt='복습 '+rec.total+'회차 · 연속정답 '+rec.ok+' · '+hintTxt;
     d.innerHTML='<b>'+q.m+'</b> '+q.q+'<br>'+
       '<input type="text" id="sa'+qi+'" placeholder="답을 입력하세요" style="width:70%;background:#0b1120;color:#d6e4ff;border:1px solid var(--line);border-radius:7px;padding:7px 10px;margin:8px 0;font:14px var(--mono)">'+
-      '<div class="dim" style="font-size:12px">힌트: '+q.hint+'</div>'+
+      '<div class="dim" style="font-size:12px">'+hintTxt+'</div>'+
       '<div class="exp" id="sexp'+qi+'"></div>';
     wrap.appendChild(d);
   });
@@ -1213,8 +1369,13 @@ function renderSubQuiz(){
 }
 function gradeAny(){ if(state.quizMode==='sa'){ gradeSubQuiz(); } else { gradeQuiz(); } }
 function gradeSubQuiz(){
+  srsEnsure();
+  const m=document.getElementById('quizMod').value;
+  let items=SUBQUIZ.map((q,i)=>({q,i}));
+  if(m!=='all') items=items.filter(it=> m==='due' ? (state.progress.srs.s[it.i].due<=Date.now()) : it.q.m===m);
   let score=0;
-  SUBQUIZ.forEach((q,qi)=>{
+  items.forEach(it=>{
+    const q=it.q, qi=it.i;
     const val=document.getElementById('sa'+qi).value;
     const box=document.getElementById('sq'+qi);
     const exp=document.getElementById('sexp'+qi);
@@ -1223,11 +1384,15 @@ function gradeSubQuiz(){
     exp.classList.add('show');
     if(ok){ score++; box.classList.add('right'); box.classList.remove('wrong'); exp.innerHTML='✅ 정답!'; }
     else { box.classList.add('wrong'); box.classList.remove('right'); exp.innerHTML='❌ 정답: '+q.a[0]+' — <span class="dim">'+q.hint+'</span>'; }
+    srsMark(state.progress.srs.s, qi, ok);
   });
-  document.getElementById('quizSubScore').innerHTML='<div class="card"><h2>주관식 결과: '+score+' / '+SUBQUIZ.length+'</h2>'+
-    '<div class="bar"><i style="width:'+(score/SUBQUIZ.length*100)+'%"></i></div>'+
-    '<p class="dim">주관식은 "알고 있는지"를 정직하게 확인합니다. 틀린 항목은 해당 모듈을 다시 읽어보세요.</p></div>';
+  const n=items.length;
+  document.getElementById('quizSubScore').innerHTML='<div class="card"><h2>주관식 결과: '+score+' / '+n+'</h2>'+
+    '<div class="bar"><i style="width:'+(n?score/n*100:0)+'%"></i></div>'+
+    '<p class="dim">주관식은 "알고 있는지"를 정직하게 확인합니다. 틀린 항목은 오늘 다시 복습 목록에 들어갑니다.</p></div>';
+  renderWeak();
 }
+renderWeak(); /* 페이지 로드 1회 — 약점 진단 패널 렌더 (QUIZ·SUBQUIZ 정의 후) */
 
 /* ============================================================
    코딩 과제 (개선안 3 — 빈칸 채우기 + 검증)
@@ -1265,48 +1430,123 @@ const MISSIONS=[
   hint:'사용이 끝난 뮤텍스는 xSemaphoreGive(xSemaphore_Actuator) 로 반환해야 합니다.',
   template:'// 미션 5: 뮤텍스 사용 후 반환을 채우세요 (누락 시 데드락).\n#include "semphr.h"\ntypedef struct { uint32_t commandId; uint16_t duty; uint8_t state; uint32_t sourceCanId; } ActuatorCmd_t;\nvoid *xSemaphore_Actuator;   // 실제로는 뮤텍스 핸들\nvoid prvApplyActuatorCommand(ActuatorCmd_t *c);\nvoid vTask_Actuator(void *pvParameters)\n{\n    ActuatorCmd_t xCmd;\n    if (xSemaphoreTake(xSemaphore_Actuator, portMAX_DELAY) == pdTRUE)\n    {\n        prvApplyActuatorCommand(&xCmd);\n        /* ==== 여기에 코드를 작성하세요 ==== */\n    }\n}\n',
   solution:'// 미션 5: 뮤텍스 사용 후 반환을 채우세요 (누락 시 데드락).\n#include "semphr.h"\ntypedef struct { uint32_t commandId; uint16_t duty; uint8_t state; uint32_t sourceCanId; } ActuatorCmd_t;\nvoid *xSemaphore_Actuator;   // 실제로는 뮤텍스 핸들\nvoid prvApplyActuatorCommand(ActuatorCmd_t *c);\nvoid vTask_Actuator(void *pvParameters)\n{\n    ActuatorCmd_t xCmd;\n    if (xSemaphoreTake(xSemaphore_Actuator, portMAX_DELAY) == pdTRUE)\n    {\n        prvApplyActuatorCommand(&xCmd);\n        xSemaphoreGive(xSemaphore_Actuator);\n    }\n}\n'},
+ {id:6,t:'버그 수정 — ISR 공유 변수에 volatile 추가',type:'fix',lv:'중간',learn:'ISR과 태스크가 공유하는 변수는 volatile 이어야 최적화로 읽기가 생략되지 않는다.',
+  marker:'static uint32_t s_ulCounter = 0;',
+  must:'volatile',
+  hint:'컴파일러가 s_ulCounter 를 레지스터에 캐싱하지 않도록 volatile 한정자를 붙이세요.',
+  template:'// 미션 6: ISR과 태스크가 공유하는 카운터에 volatile 한정자가 빠져 있습니다. 수정하세요.\n#include <stdint.h>\n\nstatic uint32_t s_ulCounter = 0;   // ISR과 태스크가 공유\n\nvoid EXTI0_IRQHandler(void)        // ISR — 매 인터럽트마다 증가\n{\n    s_ulCounter++;\n}\n\nuint32_t GetCounter(void)\n{\n    return s_ulCounter;            // while 루프에서 무한 반복 위험\n}\n',
+  solution:'// 미션 6: ISR과 태스크가 공유하는 카운터에 volatile 한정자를 붙였습니다.\n#include <stdint.h>\n\nstatic volatile uint32_t s_ulCounter = 0;   // ISR과 태스크가 공유 → volatile 필수\n\nvoid EXTI0_IRQHandler(void)        // ISR — 매 인터럽트마다 증가\n{\n    s_ulCounter++;\n}\n\nuint32_t GetCounter(void)\n{\n    return s_ulCounter;            // volatile 덕분에 매번 메모리에서 다시 읽음\n}\n'},
+ {id:7,t:'버그 찾기 — 조용한 실패 3곳',type:'find',lv:'중간',learn:'에러를 무시하는 반환값 미검사·빈 블록·단일 실패점이 결함이다.',
+  must:'xQueueSend',
+  musts:['xQueueSend','IWDG_ReloadCounter'],
+  hint:'① 큐 전송 반환값을 검사하지 않음 ② 실패 시 빈 블록으로 무시 ③ 워치독 피드가 특정 태스크에만',
+  template:'// 미션 7: 아래 코드에서 결함 3곳을 찾아 "설명" 칸에 작성하세요.\n#include "task.h"\n#include "queue.h"\n\nvoid vTask_CAN_Rx(void *pvParameters)\n{\n    for (;;)\n    {\n        xQueueSend(xQueue_Raw, &msg, 0);   // ① 반환값 검사 없음\n        { }\n        IWDG_ReloadCounter();               // ③ 워치독 피드가 이 태스크에만\n    }\n}\n',
+  solution:'정답: ① xQueueSend 반환값을 pdPASS 로 확인하지 않음 → 큐 가득 참 시 조용히 유실. ② 빈 블록 { } 로 실패를 무시 → 오류 카운터로 기록해야 함. ③ IWDG 피드가 vTask_CAN_Rx 에만 있어 단일 실패점 — 전용 워치독 태스크로 분리해야 함.'},
+ {id:8,t:'버그 수정 — ISR 안 일반 API 호출',type:'fix',lv:'어려움',learn:'ISR 컨텍스트에서는 FromISR 버전 API 만 안전하고, 끝에 스케줄러 요청이 필요하다.',
+  marker:'xSemaphoreGive(xSemaphore_Rx);',
+  must:'xSemaphoreGiveFromISR',
+  hint:'xSemaphoreGiveFromISR(xSemaphore_Rx, &xHigherPriorityTaskWoken) 로 바꾸고, 마지막에 portYIELD_FROM_ISR() 을 호출하세요.',
+  template:'// 미션 8: ISR 안에서 일반(비 FromISR) API 를 호출해 크래시 위험이 있습니다. 교정하세요.\n#include "FreeRTOS.h"\n#include "semphr.h"\n\nSemaphoreHandle_t xSemaphore_Rx;\n\nvoid CAN1_RX0_IRQHandler(void)\n{\n    BaseType_t xHigherPriorityTaskWoken = pdFALSE;\n    // 수신 프레임을 링버퍼에 저장 (생략)\n    xSemaphoreGive(xSemaphore_Rx);          // ❌ ISR 안 일반 API\n    // TODO: 인터럽트 종료 시 스케줄러 요청\n}\n',
+  solution:'// 미션 8: FromISR 버전으로 교체하고 스케줄러 요청을 추가했습니다.\n#include "FreeRTOS.h"\n#include "semphr.h"\n\nSemaphoreHandle_t xSemaphore_Rx;\n\nvoid CAN1_RX0_IRQHandler(void)\n{\n    BaseType_t xHigherPriorityTaskWoken = pdFALSE;\n    // 수신 프레임을 링버퍼에 저장 (생략)\n    xSemaphoreGiveFromISR(xSemaphore_Rx, &xHigherPriorityTaskWoken);  // ✅ FromISR\n    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);                     // ✅ 스케줄러 요청\n}\n'},
 ];
 
 function renderMissions(){
   const wrap=document.getElementById('missionWrap');
   wrap.innerHTML='';
   MISSIONS.forEach(m=>{
-    const card=document.createElement('div'); card.className='card';
-    card.innerHTML='<h2>미션 '+m.id+'. '+m.t+' <span class="pill '+(m.lv==='쉬움'?'ok':m.lv==='중간'?'info':'warn')+'">'+m.lv+'</span></h2>'+
+    const card=document.createElement('div'); card.className='card'; card.id='misCard'+m.id;
+    const tType=m.type||'blank';
+    const tBadge=tType==='find'?'<span class="pill warn">🔍 버그 찾기</span>':tType==='fix'?'<span class="pill crit">🔧 버그 수정</span>':'<span class="pill ok">✏️ 빈칸 채우기</span>';
+    const rec=state.progress.mis && state.progress.mis[m.id];
+    let srsBadges='';
+    if(rec && rec.total>0) srsBadges+='<span class="pill info">시도 '+rec.total+'회차</span>';
+    if(rec && rec.ok===0 && rec.due<=Date.now()) srsBadges+='<span class="pill warn">🔁 다시 도전</span>';
+    let codeUI;
+    if(tType==='find'){
+      codeUI='<pre class="code" style="max-height:280px;overflow:auto">'+esc(m.template)+'</pre>'+
+        '<textarea id="mis'+m.id+'" class="misCode" style="min-height:90px" placeholder="찾은 결함을 여기에 설명하세요 (몇 개, 어디에, 왜 문제인지)..."></textarea>';
+    }else{
+      codeUI='<textarea id="mis'+m.id+'" class="misCode" style="min-height:200px">'+esc(m.template)+'</textarea>';
+    }
+    card.innerHTML='<h2>미션 '+m.id+'. '+m.t+' '+tBadge+' <span class="pill '+(m.lv==='쉬움'?'ok':m.lv==='중간'?'info':'warn')+'">'+m.lv+'</span>'+srsBadges+'</h2>'+
       '<p class="dim">배우는 것: '+m.learn+'</p>'+
-      '<textarea id="mis'+m.id+'" class="misCode" style="min-height:200px">'+esc(m.template)+'</textarea>'+
+      codeUI+
       '<div><button class="act" onclick="checkMission('+m.id+')">✅ 검증 (오프라인)</button>'+
-      '<button class="ghost" onclick="missionGcc('+m.id+')">🔨 gcc 컴파일 확인</button>'+
+      (tType!=='find'?'<button class="ghost" onclick="missionGcc('+m.id+')">🔨 gcc 컴파일 확인</button>':'')+
       '<button class="ghost" onclick="revealMission('+m.id+')">👀 정답 보기</button>'+
       '<button class="ghost" onclick="resetMission('+m.id+')">↺ 초기화</button></div>'+
       '<div class="dim" style="margin-top:6px">힌트: '+m.hint+'</div>'+
       '<div id="misOut'+m.id+'"></div>';
     wrap.appendChild(card);
   });
+  renderMisReview();
+}
+function misEnsure(){ if(!state.progress.mis) state.progress.mis={}; }
+function misMark(id, correct){
+  misEnsure();
+  const e=state.progress.mis[id]||(state.progress.mis[id]={ok:0,total:0,due:0,last:0});
+  const now=Date.now();
+  if(correct===true){ e.ok++; e.due=now+srsInterval(e.ok)*86400000; }
+  else{ e.ok=0; e.due=now; }
+  e.total++; e.last=now;
+  saveState();
+}
+function renderMisReview(){
+  misEnsure();
+  const el=document.getElementById('misReview');
+  if(!el) return;
+  const now=Date.now();
+  const due=[];
+  MISSIONS.forEach(m=>{
+    const r=state.progress.mis[m.id];
+    if(r && r.total>0 && r.ok===0 && r.due<=now) due.push(m);
+  });
+  if(!due.length){ el.innerHTML=''; return; }
+  el.innerHTML='<div class="card"><h2>🔁 다시 도전할 미션</h2><div>'+
+    due.map(m=>'<button class="ghost" onclick="document.getElementById(\'misCard'+m.id+'\').scrollIntoView({block:\'center\'})">미션 '+m.id+' · '+m.t+'</button>').join(' ')+
+    '</div></div>';
 }
 function checkMission(id){
   const m=MISSIONS[id-1];
   const code=document.getElementById('mis'+id).value;
   const out=document.getElementById('misOut'+id);
+  const tType=m.type||'blank';
   const errs=[];
-  if(code.includes(m.marker)) errs.push('아직 빈칸(marker)이 남아 있습니다.');
-  if(!code.includes(m.must)) errs.push('필수 코드("'+m.must+'")가 없습니다.');
-  const syn=clientSyntaxCheck(code);
-  errs.push.apply(errs, syn.map(s=>s.line+'행 '+s.msg));
+  if(tType==='find'){
+    if(code.trim().length<10){ errs.push('아직 찾은 결함을 작성하지 않았습니다. 코드를 읽고 문제가 될 만한 곳을 찾아 설명하세요.'); }
+    (m.musts||(m.must?[m.must]:[])).forEach(k=>{ if(!code.includes(k)) errs.push('핵심 단서 "'+k+'" 가 설명에 없습니다.'); });
+  }else{
+    if(m.marker && code.includes(m.marker)) errs.push('아직 빈칸(marker)이 남아 있습니다.');
+    if(m.must && !code.includes(m.must)) errs.push('필수 코드("'+m.must+'")가 없습니다.');
+    const syn=clientSyntaxCheck(code);
+    errs.push.apply(errs, syn.map(s=>s.line+'행 '+s.msg));
+  }
   if(errs.length===0){
-    out.innerHTML='<div class="finding info"><div class="t">✅ 오프라인 검증 통과</div><div class="dim">빈칸이 채워졌고 필수 코드가 포함되었으며 문법 구조도 정상입니다. gcc 확인으로 컴파일까지 검증하세요.</div></div>';
+    const passMsg=tType==='find'?'찾은 결함이 핵심 단서를 모두 포함하고 있습니다. "정답 보기"로 놓친 결함이 없는지 비교해 보세요.':'빈칸이 채워졌고 필수 코드가 포함되었으며 문법 구조도 정상입니다. gcc 확인으로 컴파일까지 검증하세요.';
+    out.innerHTML='<div class="finding info"><div class="t">✅ 오프라인 검증 통과</div><div class="dim">'+passMsg+'</div></div>';
+    misMark(id, true);
   }else{
     out.innerHTML='<div class="finding crit"><div class="t">❌ 미완료</div><div class="dim">'+errs.map(esc).join('<br>')+'</div></div>';
+    misMark(id, false);
   }
+  renderMisReview();
 }
 function revealMission(id){
   const m=MISSIONS[id-1];
-  document.getElementById('mis'+id).value=m.solution;
-  document.getElementById('misOut'+id).innerHTML='<div class="finding warn"><div class="t">정답을 공개했습니다</div><div class="dim">어디가 달랐는지 비교해 보고, 초기화 후 다시 시도해 보세요.</div></div>';
+  const tType=m.type||'blank';
+  if(tType==='find'){
+    document.getElementById('misOut'+id).innerHTML='<div class="finding warn"><div class="t">정답을 공개했습니다</div><div class="dim">'+esc(m.solution)+'</div></div>';
+  }else{
+    document.getElementById('mis'+id).value=m.solution;
+    document.getElementById('misOut'+id).innerHTML='<div class="finding warn"><div class="t">정답을 공개했습니다</div><div class="dim">어디가 달랐는지 비교해 보고, 초기화 후 다시 시도해 보세요.</div></div>';
+  }
+  misMark(id, false);
+  renderMisReview();
 }
 function resetMission(id){
   const m=MISSIONS[id-1];
-  document.getElementById('mis'+id).value=m.template;
+  const tType=m.type||'blank';
+  document.getElementById('mis'+id).value=(tType==='find')?'':m.template;
   document.getElementById('misOut'+id).innerHTML='';
 }
 async function missionGcc(id){
@@ -1694,12 +1934,15 @@ function loadBundle(b){
   mutate(MISSIONS,b.missions||[]);
   mutate(MODULES,(b.path||[]).map(m=>({id:m.id,t:m.t,f:m.goal||''})));
   rtaTasks=(b.rta||[]).map(t=>({...t}));
+  if(Array.isArray(b.schedTasks)&&b.schedTasks.length){ mutate(SCHED_BASE_TASKS,b.schedTasks.map(function(t){ return {name:t.name,T:t.T,C:t.C,p:t.p,D:(t.D!==undefined?t.D:t.T)}; })); }
+  schedRebuild();
+  state.lastProgress={...state.progress}; saveState();
   state.progress={}; saveState();
   rebuildQuizMods();
-  renderCodeSel(); renderPath(); renderQuiz(); renderSubQuiz(); renderMissions();
+  renderCodeSel(); renderPath(); renderQuiz(); renderSubQuiz(); renderMissions(); renderWeak();
   renderRTATable(); calcRTA(); renderProgress();
   const s=document.getElementById('bundleStatus');
-  if(s) s.innerHTML='✅ 로드됨: '+esc(b.title||'프로젝트')+' — 파일 '+(b.files||[]).length+'개 · 경로 '+(b.path||[]).length+'모듈 · 퀴즈 '+(b.quiz||[]).length+'문항 · 주관식 '+(b.subquiz||[]).length+'문항 · 미션 '+(b.missions||[]).length+'개 · RTA '+(b.rta||[]).length+'태스크';
+  if(s) s.innerHTML='✅ 로드됨: '+esc(b.title||'프로젝트')+' — 파일 '+(b.files||[]).length+'개 · 경로 '+(b.path||[]).length+'모듈 · 퀴즈 '+(b.quiz||[]).length+'문항 · 주관식 '+(b.subquiz||[]).length+'문항 · 미션 '+(b.missions||[]).length+'개 · RTA '+(b.rta||[]).length+'태스크 · 스케줄러 '+(b.schedTasks||[]).length+'태스크';
 }
 function restoreOriginal(){
   if(!ORIGINAL.files){ const s=document.getElementById('bundleStatus'); if(s)s.innerHTML='❌ 스냅샷 없음'; return; }
@@ -1711,9 +1954,11 @@ function restoreOriginal(){
   mutate(MISSIONS,ORIGINAL.missions);
   mutate(MODULES,ORIGINAL.modules);
   rtaTasks=ORIGINAL.rta.map(t=>({...t}));
-  state.progress={}; saveState();
+  mutate(SCHED_BASE_TASKS,ORIGINAL.schedTasks.map(t=>({...t})));
+  schedRebuild();
+  state.progress=state.lastProgress||{}; saveState();
   rebuildQuizMods();
-  renderCodeSel(); renderPath(); renderQuiz(); renderSubQuiz(); renderMissions();
+  renderCodeSel(); renderPath(); renderQuiz(); renderSubQuiz(); renderMissions(); renderWeak();
   renderRTATable(); calcRTA(); renderProgress();
   const s=document.getElementById('bundleStatus');
   if(s) s.innerHTML='↺ 원래 교재(FreeRTOS 프로젝트)로 복원했습니다.';
@@ -1721,7 +1966,7 @@ function restoreOriginal(){
 function rebuildQuizMods(){
   const sel=document.getElementById('quizMod');
   if(!sel) return;
-  let h='<option value="all">전체</option>';
+  let h='<option value="all">전체</option><option value="due">🔁 복습할 문제 (간격 반복)</option>';
   PATH.forEach(m=>{ h+='<option value="'+esc(m.id)+'">'+esc(m.id)+'</option>'; });
   sel.innerHTML=h;
 }
@@ -1758,8 +2003,51 @@ function addSourceFiles(ev){
   });
 }
 
-const SAMPLE_BUNDLE={"title": "온도 경보 시스템 (STM32F4 + FreeRTOS 교육용)", "files": [{"path": "src/temp_alarm.c", "content": "// temp_alarm.c — 온도 경보 태스크 (STM32F4 + FreeRTOS, 교육용 예제)\n#include \"task.h\" // FreeRTOS 태스크 API 를 사용하기 위해 포함합니다.\n#include \"bsp_uart.h\" // UART 출력 함수 선언을 포함합니다.\n#include \"bsp_gpio.h\" // GPIO 제어 함수 선언을 포함합니다.\n#define TEMP_THRESHOLD_X100 7500 // 경보 임계값입니다. (75.00℃, 0.01℃ 단위)\n#define LED_PIN 5U // 경보 LED 의 논리 핀 번호입니다.\nvoid UART_Send(const char *s); // UART 문자열 전송 함수 선언입니다.\nvoid GPIO_Write(uint32_t pin, uint8_t state); // GPIO 출력 함수 선언입니다.\nvoid vTask_TempAlarm(void *pvParameters) // 온도 경보 태스크를 정의합니다.\n{ // 태스크 본문을 시작합니다.\n    const TickType_t xPeriod = pdMS_TO_TICKS(100U); // 100ms 주기를 틱으로 변환합니다.\n    TickType_t xLastWakeTime = xTaskGetTickCount(); // 정밀 주기용 기준 시각입니다.\n    for (;;) // 무한 루프를 시작합니다.\n    { // 루프 본문을 시작합니다.\n        int32_t lTempX100 = BMP280_ReadTempX100(); // 온도를 0.01℃ 단위로 읽습니다.\n        if (lTempX100 > TEMP_THRESHOLD_X100) // 임계값을 초과했는지 확인합니다.\n        { // 경보 발생 블록을 시작합니다.\n            GPIO_Write(LED_PIN, 1U); // 경보 LED 를 점등합니다.\n            UART_Send(\"ALARM\"); // 경보 메시지를 출력합니다.\n        } // 경보 발생 블록을 종료합니다.\n        else // 임계값 이하인 경우입니다.\n        { // 정상 상태 블록을 시작합니다.\n            GPIO_Write(LED_PIN, 0U); // 경보 LED 를 소등합니다.\n        } // 정상 상태 블록을 종료합니다.\n        vTaskDelayUntil(&xLastWakeTime, xPeriod); // 100ms 정밀 주기를 유지합니다.\n    } // 무한 루프를 종료합니다.\n} // 태스크 함수를 종료합니다.\n"}, {"path": "src/cli.c", "content": "// cli.c — 시리얼 명령 파서 (교육용 예제)\n#include <stdint.h> // 고정 폭 정수 타입을 사용하기 위해 포함합니다.\nvoid UART_Send(const char *s); // UART 출력 함수 선언입니다.\nvoid cli_handle(uint8_t cmd) // 명령 처리 함수를 정의합니다.\n{ // 함수 본문을 시작합니다.\n    switch (cmd) // 수신한 명령 값으로 분기합니다.\n    { // switch 블록을 시작합니다.\n        case 0x01: // LED 켜기 명령인 경우입니다.\n            UART_Send(\"LED ON\"); // 응답을 출력합니다.\n            break; // 케이스를 종료합니다.\n        case 0x02: // LED 끄기 명령인 경우입니다.\n            UART_Send(\"LED OFF\"); // 응답을 출력합니다.\n            break; // 케이스를 종료합니다.\n        default: // 정의되지 않은 명령인 경우입니다.\n            UART_Send(\"UNKNOWN\"); // 오류 응답을 출력합니다.\n            break; // 기본 케이스를 종료합니다.\n    } // switch 블록을 종료합니다.\n} // 함수를 종료합니다.\n"}], "notes": {"src/temp_alarm.c": "온도 임계값 판단 + LED/UART 경보 (vTaskDelayUntil 정밀 주기)", "src/cli.c": "시리얼 명령 파서 — switch/default 구조"}, "path": [{"id": "A1", "icon": "🧭", "t": "구조 파악", "goal": "태스크 하나가 '읽기→판단→출력→지연' 순환임을 확인", "concept": ["태스크는 무한 루프 + vTaskDelayUntil 로 주기를 만든다.", "임계값 판단은 비교 연산으로, 출력은 GPIO/UART 로 나간다."], "reads": [{"file": "src/temp_alarm.c", "line": 5, "fn": "임계값 정의", "why": "임계값을 0.01℃ 단위 정수로 두는 이유"}, {"file": "src/temp_alarm.c", "line": 16, "fn": "판단 분기", "why": "초과 시에만 경보"}], "activity": "코딩 과제 미션 A1 로 임계값을 직접 채워 보세요."}, {"id": "A2", "icon": "🔀", "t": "명령 분기 (switch)", "goal": "default 절로 미정의 명령을 처리하는 습관", "concept": ["switch 에 default 가 없으면 미정의 입력을 조용히 무시한다.", "break 누락은 다음 case 로 떨어지는(fall-through) 버그를 만든다."], "reads": [{"file": "src/cli.c", "line": 14, "fn": "default 절", "why": "미정의 명령에 UNKNOWN 응답"}], "activity": "주관식 퀴즈에서 '미정의 명령 응답 문자열'을 회상해 보세요."}, {"id": "A3", "icon": "✅", "t": "검증과 확장", "goal": "코드 → 컴파일 → 규칙 검사로 이어지는 습관", "concept": ["작성한 코드는 gcc -fsyntax-only 로 문법을, 임베디드 규칙으로 결함 패턴을 검사한다.", "경보 지연(주기)이 요구사양(응답시간)을 만족하는지 RTA 로 확인한다."], "reads": [{"file": "src/temp_alarm.c", "line": 25, "fn": "정밀 주기", "why": "주기 드리프트 방지"}], "activity": "빌드 탭에서 통합 검사를 돌려 보세요."}], "quiz": [{"m": "A1", "q": "임계값 TEMP_THRESHOLD_X100 이 7500 일 때, 섭씨 몇 도가 경보 기준인가요?", "o": ["75.00℃", "7.5℃", "750℃", "0.75℃"], "a": 0, "w": "0.01℃ 단위이므로 7500 × 0.01 = 75.00℃ 입니다. float 대신 정수를 쓰는 이유는 코드에서 확인하세요."}, {"m": "A2", "q": "cli.c 의 switch 에서 미정의 명령이 들어오면 출력되는 문자열은?", "o": ["UNKNOWN", "ERROR", "NONE", "무응답"], "a": 0, "w": "default 절이 UNKNOWN 을 출력합니다. default 가 없었다면 조용히 무시됐을 것입니다."}, {"m": "A3", "q": "vTaskDelay 대신 vTaskDelayUntil 을 쓰는 이유는?", "o": ["주기 드리프트 누적 방지", "코드가 짧아서", "메모리 절약", "우선순위 상승"], "a": 0, "w": "vTaskDelay 는 실행 시간만큼 주기가 밀려 누적되고, vTaskDelayUntil 은 절대 시각 기준으로 주기를 유지합니다."}], "subquiz": [{"m": "A1", "q": "임계값 초과 시 켜지는 GPIO 핀의 심볼은? (LED_PIN 등)", "a": ["led_pin", "ledpin", "led"], "hint": "temp_alarm.c 의 #define LED_PIN 을 보세요."}, {"m": "A1", "q": "경보 발생 시 UART 로 출력되는 문자열은?", "a": ["alarm"], "hint": "UART_Send(...) 의 인자를 보세요."}, {"m": "A2", "q": "미정의 명령에 대한 응답 문자열은?", "a": ["unknown"], "hint": "default 절입니다."}], "missions": [{"id": 1, "t": "경보 임계값 채우기", "lv": "쉬움", "learn": "임계값을 0.01℃ 단위 정수로 정의", "marker": "/* ==== 여기에 코드를 작성하세요 ==== */", "must": "7500", "hint": "75.00℃ = 7500 (0.01℃ 단위)", "template": "// 미션 A1: 경보 임계값(0.01℃ 단위)을 75.00℃ 로 채우세요.\n#include \"task.h\"\nint32_t BMP280_ReadTempX100(void);\nvoid UART_Send(const char *s);\n#define TEMP_THRESHOLD_X100  /* ==== 여기에 코드를 작성하세요 ==== */\nvoid vTask_TempAlarm(void *pvParameters)\n{\n    const TickType_t xPeriod = pdMS_TO_TICKS(100U);\n    TickType_t xLastWakeTime = xTaskGetTickCount();\n    for (;;)\n    {\n        int32_t lTempX100 = BMP280_ReadTempX100();\n        if (lTempX100 > TEMP_THRESHOLD_X100)\n        {\n            UART_Send(\"ALARM\");\n        }\n        vTaskDelayUntil(&xLastWakeTime, xPeriod);\n    }\n}\n", "solution": "// 미션 A1: 경보 임계값(0.01℃ 단위)을 75.00℃ 로 채우세요.\n#include \"task.h\"\nint32_t BMP280_ReadTempX100(void);\nvoid UART_Send(const char *s);\n#define TEMP_THRESHOLD_X100  7500\nvoid vTask_TempAlarm(void *pvParameters)\n{\n    const TickType_t xPeriod = pdMS_TO_TICKS(100U);\n    TickType_t xLastWakeTime = xTaskGetTickCount();\n    for (;;)\n    {\n        int32_t lTempX100 = BMP280_ReadTempX100();\n        if (lTempX100 > TEMP_THRESHOLD_X100)\n        {\n            UART_Send(\"ALARM\");\n        }\n        vTaskDelayUntil(&xLastWakeTime, xPeriod);\n    }\n}\n"}, {"id": 2, "t": "주기 지연 API 교정", "lv": "중간", "learn": "vTaskDelayUntil 로 정밀 주기 유지", "marker": "        vTaskDelay(xPeriod); /* ==== 교체하세요 ==== */", "must": "vTaskDelayUntil", "hint": "vTaskDelayUntil(&xLastWakeTime, xPeriod) 로 교체하세요.", "template": "// 미션 A2: 주기 태스크의 지연 API 를 교정하세요.\n#include \"task.h\"\nvoid vTask_Blink(void *pvParameters)\n{\n    const TickType_t xPeriod = pdMS_TO_TICKS(200U);\n    TickType_t xLastWakeTime = xTaskGetTickCount();\n    for (;;)\n    {\n        vTaskDelay(xPeriod); /* ==== 교체하세요 ==== */\n    }\n}\n", "solution": "// 미션 A2: 주기 태스크의 지연 API 를 교정하세요.\n#include \"task.h\"\nvoid vTask_Blink(void *pvParameters)\n{\n    const TickType_t xPeriod = pdMS_TO_TICKS(200U);\n    TickType_t xLastWakeTime = xTaskGetTickCount();\n    for (;;)\n    {\n        vTaskDelayUntil(&xLastWakeTime, xPeriod);\n    }\n}\n"}], "rta": [{"name": "Sensor", "T": 10, "C": 0.8, "p": 3, "D": 10}, {"name": "Alarm", "T": 100, "C": 0.3, "p": 2, "D": 100}, {"name": "Console", "T": 200, "C": 1.0, "p": 1, "D": 200}]};
+const SAMPLE_BUNDLE={"title": "온도 경보 시스템 (STM32F4 + FreeRTOS 교육용)", "files": [{"path": "src/temp_alarm.c", "content": "// temp_alarm.c — 온도 경보 태스크 (STM32F4 + FreeRTOS, 교육용 예제)\n#include \"task.h\" // FreeRTOS 태스크 API 를 사용하기 위해 포함합니다.\n#include \"bsp_uart.h\" // UART 출력 함수 선언을 포함합니다.\n#include \"bsp_gpio.h\" // GPIO 제어 함수 선언을 포함합니다.\n#define TEMP_THRESHOLD_X100 7500 // 경보 임계값입니다. (75.00℃, 0.01℃ 단위)\n#define LED_PIN 5U // 경보 LED 의 논리 핀 번호입니다.\nvoid UART_Send(const char *s); // UART 문자열 전송 함수 선언입니다.\nvoid GPIO_Write(uint32_t pin, uint8_t state); // GPIO 출력 함수 선언입니다.\nvoid vTask_TempAlarm(void *pvParameters) // 온도 경보 태스크를 정의합니다.\n{ // 태스크 본문을 시작합니다.\n    const TickType_t xPeriod = pdMS_TO_TICKS(100U); // 100ms 주기를 틱으로 변환합니다.\n    TickType_t xLastWakeTime = xTaskGetTickCount(); // 정밀 주기용 기준 시각입니다.\n    for (;;) // 무한 루프를 시작합니다.\n    { // 루프 본문을 시작합니다.\n        int32_t lTempX100 = BMP280_ReadTempX100(); // 온도를 0.01℃ 단위로 읽습니다.\n        if (lTempX100 > TEMP_THRESHOLD_X100) // 임계값을 초과했는지 확인합니다.\n        { // 경보 발생 블록을 시작합니다.\n            GPIO_Write(LED_PIN, 1U); // 경보 LED 를 점등합니다.\n            UART_Send(\"ALARM\"); // 경보 메시지를 출력합니다.\n        } // 경보 발생 블록을 종료합니다.\n        else // 임계값 이하인 경우입니다.\n        { // 정상 상태 블록을 시작합니다.\n            GPIO_Write(LED_PIN, 0U); // 경보 LED 를 소등합니다.\n        } // 정상 상태 블록을 종료합니다.\n        vTaskDelayUntil(&xLastWakeTime, xPeriod); // 100ms 정밀 주기를 유지합니다.\n    } // 무한 루프를 종료합니다.\n} // 태스크 함수를 종료합니다.\n"}, {"path": "src/cli.c", "content": "// cli.c — 시리얼 명령 파서 (교육용 예제)\n#include <stdint.h> // 고정 폭 정수 타입을 사용하기 위해 포함합니다.\nvoid UART_Send(const char *s); // UART 출력 함수 선언입니다.\nvoid cli_handle(uint8_t cmd) // 명령 처리 함수를 정의합니다.\n{ // 함수 본문을 시작합니다.\n    switch (cmd) // 수신한 명령 값으로 분기합니다.\n    { // switch 블록을 시작합니다.\n        case 0x01: // LED 켜기 명령인 경우입니다.\n            UART_Send(\"LED ON\"); // 응답을 출력합니다.\n            break; // 케이스를 종료합니다.\n        case 0x02: // LED 끄기 명령인 경우입니다.\n            UART_Send(\"LED OFF\"); // 응답을 출력합니다.\n            break; // 케이스를 종료합니다.\n        default: // 정의되지 않은 명령인 경우입니다.\n            UART_Send(\"UNKNOWN\"); // 오류 응답을 출력합니다.\n            break; // 기본 케이스를 종료합니다.\n    } // switch 블록을 종료합니다.\n} // 함수를 종료합니다.\n"}], "notes": {"src/temp_alarm.c": "온도 임계값 판단 + LED/UART 경보 (vTaskDelayUntil 정밀 주기)", "src/cli.c": "시리얼 명령 파서 — switch/default 구조"}, "path": [{"id": "A1", "icon": "🧭", "t": "구조 파악", "goal": "태스크 하나가 '읽기→판단→출력→지연' 순환임을 확인", "concept": ["태스크는 무한 루프 + vTaskDelayUntil 로 주기를 만든다.", "임계값 판단은 비교 연산으로, 출력은 GPIO/UART 로 나간다."], "reads": [{"file": "src/temp_alarm.c", "line": 5, "fn": "임계값 정의", "why": "임계값을 0.01℃ 단위 정수로 두는 이유"}, {"file": "src/temp_alarm.c", "line": 16, "fn": "판단 분기", "why": "초과 시에만 경보"}], "activity": "코딩 과제 미션 A1 로 임계값을 직접 채워 보세요."}, {"id": "A2", "icon": "🔀", "t": "명령 분기 (switch)", "goal": "default 절로 미정의 명령을 처리하는 습관", "concept": ["switch 에 default 가 없으면 미정의 입력을 조용히 무시한다.", "break 누락은 다음 case 로 떨어지는(fall-through) 버그를 만든다."], "reads": [{"file": "src/cli.c", "line": 14, "fn": "default 절", "why": "미정의 명령에 UNKNOWN 응답"}], "activity": "주관식 퀴즈에서 '미정의 명령 응답 문자열'을 회상해 보세요."}, {"id": "A3", "icon": "✅", "t": "검증과 확장", "goal": "코드 → 컴파일 → 규칙 검사로 이어지는 습관", "concept": ["작성한 코드는 gcc -fsyntax-only 로 문법을, 임베디드 규칙으로 결함 패턴을 검사한다.", "경보 지연(주기)이 요구사양(응답시간)을 만족하는지 RTA 로 확인한다."], "reads": [{"file": "src/temp_alarm.c", "line": 25, "fn": "정밀 주기", "why": "주기 드리프트 방지"}], "activity": "빌드 탭에서 통합 검사를 돌려 보세요."}], "quiz": [{"m": "A1", "q": "임계값 TEMP_THRESHOLD_X100 이 7500 일 때, 섭씨 몇 도가 경보 기준인가요?", "o": ["75.00℃", "7.5℃", "750℃", "0.75℃"], "a": 0, "w": "0.01℃ 단위이므로 7500 × 0.01 = 75.00℃ 입니다. float 대신 정수를 쓰는 이유는 코드에서 확인하세요."}, {"m": "A2", "q": "cli.c 의 switch 에서 미정의 명령이 들어오면 출력되는 문자열은?", "o": ["UNKNOWN", "ERROR", "NONE", "무응답"], "a": 0, "w": "default 절이 UNKNOWN 을 출력합니다. default 가 없었다면 조용히 무시됐을 것입니다."}, {"m": "A3", "q": "vTaskDelay 대신 vTaskDelayUntil 을 쓰는 이유는?", "o": ["주기 드리프트 누적 방지", "코드가 짧아서", "메모리 절약", "우선순위 상승"], "a": 0, "w": "vTaskDelay 는 실행 시간만큼 주기가 밀려 누적되고, vTaskDelayUntil 은 절대 시각 기준으로 주기를 유지합니다."}], "subquiz": [{"m": "A1", "q": "임계값 초과 시 켜지는 GPIO 핀의 심볼은? (LED_PIN 등)", "a": ["led_pin", "ledpin", "led"], "hint": "temp_alarm.c 의 #define LED_PIN 을 보세요."}, {"m": "A1", "q": "경보 발생 시 UART 로 출력되는 문자열은?", "a": ["alarm"], "hint": "UART_Send(...) 의 인자를 보세요."}, {"m": "A2", "q": "미정의 명령에 대한 응답 문자열은?", "a": ["unknown"], "hint": "default 절입니다."}], "missions": [{"id": 1, "t": "경보 임계값 채우기", "lv": "쉬움", "learn": "임계값을 0.01℃ 단위 정수로 정의", "marker": "/* ==== 여기에 코드를 작성하세요 ==== */", "must": "7500", "hint": "75.00℃ = 7500 (0.01℃ 단위)", "template": "// 미션 A1: 경보 임계값(0.01℃ 단위)을 75.00℃ 로 채우세요.\n#include \"task.h\"\nint32_t BMP280_ReadTempX100(void);\nvoid UART_Send(const char *s);\n#define TEMP_THRESHOLD_X100  /* ==== 여기에 코드를 작성하세요 ==== */\nvoid vTask_TempAlarm(void *pvParameters)\n{\n    const TickType_t xPeriod = pdMS_TO_TICKS(100U);\n    TickType_t xLastWakeTime = xTaskGetTickCount();\n    for (;;)\n    {\n        int32_t lTempX100 = BMP280_ReadTempX100();\n        if (lTempX100 > TEMP_THRESHOLD_X100)\n        {\n            UART_Send(\"ALARM\");\n        }\n        vTaskDelayUntil(&xLastWakeTime, xPeriod);\n    }\n}\n", "solution": "// 미션 A1: 경보 임계값(0.01℃ 단위)을 75.00℃ 로 채우세요.\n#include \"task.h\"\nint32_t BMP280_ReadTempX100(void);\nvoid UART_Send(const char *s);\n#define TEMP_THRESHOLD_X100  7500\nvoid vTask_TempAlarm(void *pvParameters)\n{\n    const TickType_t xPeriod = pdMS_TO_TICKS(100U);\n    TickType_t xLastWakeTime = xTaskGetTickCount();\n    for (;;)\n    {\n        int32_t lTempX100 = BMP280_ReadTempX100();\n        if (lTempX100 > TEMP_THRESHOLD_X100)\n        {\n            UART_Send(\"ALARM\");\n        }\n        vTaskDelayUntil(&xLastWakeTime, xPeriod);\n    }\n}\n"}, {"id": 2, "t": "주기 지연 API 교정", "lv": "중간", "learn": "vTaskDelayUntil 로 정밀 주기 유지", "marker": "        vTaskDelay(xPeriod); /* ==== 교체하세요 ==== */", "must": "vTaskDelayUntil", "hint": "vTaskDelayUntil(&xLastWakeTime, xPeriod) 로 교체하세요.", "template": "// 미션 A2: 주기 태스크의 지연 API 를 교정하세요.\n#include \"task.h\"\nvoid vTask_Blink(void *pvParameters)\n{\n    const TickType_t xPeriod = pdMS_TO_TICKS(200U);\n    TickType_t xLastWakeTime = xTaskGetTickCount();\n    for (;;)\n    {\n        vTaskDelay(xPeriod); /* ==== 교체하세요 ==== */\n    }\n}\n", "solution": "// 미션 A2: 주기 태스크의 지연 API 를 교정하세요.\n#include \"task.h\"\nvoid vTask_Blink(void *pvParameters)\n{\n    const TickType_t xPeriod = pdMS_TO_TICKS(200U);\n    TickType_t xLastWakeTime = xTaskGetTickCount();\n    for (;;)\n    {\n        vTaskDelayUntil(&xLastWakeTime, xPeriod);\n    }\n}\n"}], "rta": [{"name": "Sensor", "T": 10, "C": 0.8, "p": 3, "D": 10}, {"name": "Alarm", "T": 100, "C": 0.3, "p": 2, "D": 100}, {"name": "Console", "T": 200, "C": 1.0, "p": 1, "D": 200}],"schedTasks":[{"name":"Sensor","T":10,"C":0.8,"p":3},{"name":"Alarm","T":100,"C":0.3,"p":2},{"name":"Console","T":200,"C":1.0,"p":1}]};
 function loadSampleBundle(){ loadBundle(SAMPLE_BUNDLE); }
+
+const SAMPLE_BUNDLE_F1={
+  "title": "시리얼 모터 컨트롤러 (STM32F1 + FreeRTOS 교육용)",
+  "notes": {
+    "src/motor_ctrl.c": "모터 제어 태스크 — 상태머신 + PWM 듀티 클램프 + 하트비트",
+    "src/serial_cmd.c": "시리얼 명령 파서 — '$' 프로토콜 + 체크섬 + 버퍼 오버플로 가드"
+  },
+  "files": [
+    {"path": "src/motor_ctrl.c", "content": "// motor_ctrl.c — 모터 제어 태스크 (STM32F1 + FreeRTOS, 교육용 예제)\n// STM32F103: Cortex-M3, 72MHz, TIM2 PWM 채널. F4(180MHz, TIM1)와 비교하며 보세요.\n#include \"task.h\" // FreeRTOS 태스크 API 를 포함합니다.\n#include \"semphr.h\" // 뮤텍스 API 를 포함합니다.\n#define PWM_DUTY_MAX 1000U // 듀티 범위 상한입니다. (0~1000 = 0.0~100.0%)\n#define MOTOR_CMD_ID_SHUTDOWN 0xE1U // 모터 정지 명령 ID 입니다.\nvoid Motor_SetDuty(uint16_t duty); // TIM2 PWM 듀티 적용 함수 선언입니다.\nvoid Motor_Stop(void); // 모터 정지(안전 상태) 함수 선언입니다.\nvoid UART_Send(const char *s); // UART 출력 함수 선언입니다.\nstatic uint16_t s_duty = 0; // 현재 듀티 값입니다. (태스크 전용)\nvoid vTask_Motor(void *pvParameters) // 모터 제어 태스크입니다.\n{ // 태스크 본문을 시작합니다.\n    const TickType_t xPeriod = pdMS_TO_TICKS(5U); // 5ms 제어 주기입니다.\n    TickType_t xLastWakeTime = xTaskGetTickCount(); // 정밀 주기용 기준 시각입니다.\n    for (;;) // 무한 루프입니다.\n    { // 루프 본문을 시작합니다.\n        uint16_t duty; // 수신된 듀티를 저장할 변수입니다.\n        if (xQueueReceive(xQueue_Cmd, &duty, 0) == pdPASS) // 명령 큐에서 듀티를 꺼냅니다.\n        { // 큐 수신 성공 시입니다.\n            if (duty > PWM_DUTY_MAX) duty = PWM_DUTY_MAX; // 듀티를 클램프합니다. (안전)\n            s_duty = duty; // 현재 듀티를 갱신합니다.\n            Motor_SetDuty(s_duty); // PWM 에 적용합니다.\n        } // 큐 수신 처리 블록을 종료합니다.\n        ulHeartbeat_Motor = (ulHeartbeat_Motor + 1U); // 워치독 하트비트를 증가시킵니다.\n        vTaskDelayUntil(&xLastWakeTime, xPeriod); // 정밀 주기를 유지합니다.\n    } // 루프 본문을 종료합니다.\n} // 태스크 함수를 종료합니다.\nvoid prvEmergencyMotorStop(void) // 긴급 정지 함수입니다.\n{ // 함수 본문을 시작합니다.\n    s_duty = 0; // 듀티를 0 으로 강제합니다.\n    Motor_Stop(); // 안전 상태(정지)를 적용합니다.\n    UART_Send(\"MOTOR STOP\"); // 상태를 출력합니다.\n} // 함수를 종료합니다.\n"},
+    {"path": "src/serial_cmd.c", "content": "// serial_cmd.c — 시리얼 명령 파서 (STM32F1 + FreeRTOS, 교육용 예제)\n// 프로토콜: '$' 시작 + 1바이트 ID + 2바이트 데이터 + 1바이트 체크섬(XOR) 입니다.\n#include <stdint.h> // 고정 폭 정수 타입을 사용하기 위해 포함합니다.\n#define CMD_BUF_SIZE 16U // 명령 버퍼 크기입니다.\n#define CMD_START_CHAR '$' // 프레임 시작 문자입니다.\nstatic uint8_t s_buf[CMD_BUF_SIZE]; // 수신 버퍼입니다.\nstatic uint8_t s_len = 0; // 버퍼에 쌓인 바이트 수입니다.\nvoid UART_Send(const char *s); // UART 출력 함수 선언입니다.\nvoid Motor_SetDuty(uint16_t duty); // 듀티 적용 함수 선언입니다.\nvoid prvEmergencyMotorStop(void); // 긴급 정지 함수 선언입니다.\nstatic uint8_t checksum(const uint8_t *p, uint8_t n) // XOR 체크섬 계산 함수입니다.\n{ // 함수 본문을 시작합니다.\n    uint8_t x = 0; // 누적 XOR 값입니다.\n    for (uint8_t i = 0; i < n; i++) x ^= p[i]; // 모든 바이트를 XOR 합니다.\n    return x; // 계산 결과를 반환합니다.\n} // 함수를 종료합니다.\nvoid Serial_ParseByte(uint8_t c) // 바이트 단위 파서입니다. (USART1 ISR 에서 호출)\n{ // 함수 본문을 시작합니다.\n    if (c == CMD_START_CHAR) { s_len = 0; return; } // 프레임 시작이면 버퍼를 리셋합니다.\n    if (s_len >= CMD_BUF_SIZE) { s_len = 0; return; } // 오버플로 가드 — 버퍼를 버립니다.\n    s_buf[s_len++] = c; // 버퍼에 바이트를 저장합니다.\n    if (s_len == 4U) // 4바이트(채워진) 프레임이 모이면 처리합니다.\n    { // 프레임 처리 블록을 시작합니다.\n        uint8_t id = s_buf[0]; // 명령 ID 입니다.\n        uint8_t dl = s_buf[1]; // 데이터 하위 바이트입니다.\n        uint8_t dh = s_buf[2]; // 데이터 상위 바이트입니다.\n        uint8_t cs = s_buf[3]; // 체크섬 바이트입니다.\n        if (checksum(s_buf, 3) != cs) { s_len = 0; return; } // 체크섬 불일치 시 폐기합니다.\n        if (id == 0xE1U) { prvEmergencyMotorStop(); } // 긴급 정지 명령입니다.\n        else if (id == 0x01U) { Motor_SetDuty((uint16_t)((dh << 8) | dl)); } // 듀티 설정 명령입니다.\n        s_len = 0; // 버퍼를 초기화합니다.\n    } // 프레임 처리 블록을 종료합니다.\n} // 함수를 종료합니다.\n"}
+  ],
+  "path": [
+    {"id": "A1", "icon": "⚙️", "t": "구조 파악 (태스크 + 상태머신)", "goal": "태스크-큐 분리가 모터 제어의 안전성을 만드는 구조를 이해한다", "concept": ["명령은 큐를 통해서만 태스크로 전달된다 — 다른 태스크가 변수를 직접 조작할 수 없다.", "5ms 제어 주기와 하트비트 증가로 워치독이 태스크 생존을 감시한다."], "reads": [{"file": "src/motor_ctrl.c", "line": 13, "fn": "vTask_Motor", "why": "모터 제어 태스크 — 큐 수신 → 클램프 → 적용"}], "activity": "코드 학습 탭에서 motor_ctrl.c 를 읽고, 태스크가 어떤 데이터를 어떤 방식으로 받는지 정리하세요."},
+    {"id": "A2", "icon": "🔤", "t": "시리얼 프로토콜 (파싱 + 오류 처리)", "goal": "바이트 스트림에서 신뢰성 있는 프레임을 추출하는 법을 안다", "concept": ["'$' 시작 문자로 프레임을 동기화하고, 체크섬(XOR)으로 손상을 감지한다.", "버퍼 오버플로는 조용한 실패를 만든다 — 가드로 버리고 계속한다."], "reads": [{"file": "src/serial_cmd.c", "line": 17, "fn": "Serial_ParseByte", "why": "바이트 파서 — 오버플로 가드와 체크섬 검증"}], "activity": "시리얼 파서를 읽고, '$ 01 2C 01 2C' 프레임이 어떻게 처리되는지 종이에 그려보세요."},
+    {"id": "A3", "icon": "🛡️", "t": "안전 설계 (클램프 + 긴급정지)", "goal": "입력 오류가 물리적 위험으로 이어지지 않도록 막는 관점을 안다", "concept": ["듀티 클램프: 프로토콜 오류로 1500 이 들어와도 1000 을 넘지 않는다.", "긴급 정지는 파서에서 직접 호출되어 다른 태스크를 거치지 않는다."], "reads": [{"file": "src/motor_ctrl.c", "line": 28, "fn": "prvEmergencyMotorStop", "why": "안전 상태 적용 — 정지 + 출력"}], "activity": "클램프가 없다면 어떤 고장이 발생할 수 있는지 시나리오를 써보세요."}
+  ],
+  "quiz": [
+    {"m": "A1", "q": "STM32F103 의 CPU 코어와 최대 클럭은?", "o": ["Cortex-M4, 180MHz", "Cortex-M3, 72MHz", "Cortex-M0, 48MHz", "Cortex-A7, 1GHz"], "a": 1, "w": "STM32F1 계열은 Cortex-M3 기반이며 최대 72MHz 입니다. (F4 는 Cortex-M4 180MHz)"},
+    {"m": "A1", "q": "모터 제어 태스크가 명령을 받는 방법은?", "o": ["전역 변수 직접 읽기", "명령 큐(xQueueReceive)", "함수 포인터", "인터럽트 플래그"], "a": 1, "w": "태스크 간 통신은 큐로만 이루어집니다 — 이 원칙이 데이터 경합을 원천 차단합니다."},
+    {"m": "A2", "q": "시리얼 파서에서 버퍼 오버플로 가드의 위치는?", "o": ["프레임 시작 시", "바이트 저장 전", "체크섬 검증 후", "없음"], "a": 1, "w": "s_len >= CMD_BUF_SIZE 확인을 저장 전에 합니다 — 넘치면 버리고 리셋합니다."},
+    {"m": "A3", "q": "듀티 클램프의 목적은?", "o": ["성능 향상", "프로토콜 오류로 인한 비정상 듀티 차단", "전력 절감", "타이머 초기화"], "a": 1, "w": "1500 같은 비정상 값이 들어와도 1000(최대)을 넘지 않게 합니다 — 물리적 위험 방지."}
+  ],
+  "subquiz": [
+    {"m": "A1", "q": "STM32F1 계열의 CPU 코어는?", "a": ["Cortex-M3", "cortex m3"], "hint": "F4는 M4, F1은?"},
+    {"m": "A2", "q": "시리얼 프레임의 시작 문자는?", "a": ["$"], "hint": "프로토콜 정의에서 찾아보세요."},
+    {"m": "A3", "q": "긴급 정지 명령 ID 는?", "a": ["0xE1", "E1", "225"], "hint": "0xE1 = 225" }
+  ],
+  "missions": [
+    {"id": 1, "t": "버퍼 오버플로 가드 채우기", "lv": "쉬움", "learn": "오버플로는 조용한 실패 — 저장 전에 가드로 차단", "marker": "/* ==== 여기에 코드를 작성하세요 ==== */", "must": "s_len = 0;", "hint": "s_len 이 버퍼 크기 이상이면 버퍼를 버려야 합니다: s_len = 0; return;", "template": "// 미션 1: 버퍼 오버플로를 막는 가드를 채우세요.\n#include <stdint.h>\n#define CMD_BUF_SIZE 16U\nstatic uint8_t s_buf[CMD_BUF_SIZE];\nstatic uint8_t s_len = 0;\nvoid Serial_ParseByte(uint8_t c)\n{\n    if (s_len >= CMD_BUF_SIZE)\n    {\n        /* ==== 여기에 코드를 작성하세요 ==== */\n        return;\n    }\n    s_buf[s_len++] = c;\n}\n", "solution": "// 미션 1: 버퍼 오버플로를 막는 가드를 채우세요.\n#include <stdint.h>\n#define CMD_BUF_SIZE 16U\nstatic uint8_t s_buf[CMD_BUF_SIZE];\nstatic uint8_t s_len = 0;\nvoid Serial_ParseByte(uint8_t c)\n{\n    if (s_len >= CMD_BUF_SIZE)\n    {\n        s_len = 0;\n        return;\n    }\n    s_buf[s_len++] = c;\n}\n"},
+    {"id": 2, "t": "듀티 클램프 채우기", "lv": "중간", "learn": "입력 값 검증으로 물리적 위험 차단", "marker": "/* ==== 여기에 코드를 작성하세요 ==== */", "must": "PWM_DUTY_MAX", "hint": "duty 가 PWM_DUTY_MAX 를 넘으면 PWM_DUTY_MAX 로 고정하세요.", "template": "// 미션 2: 듀티 값을 안전 범위로 클램프하세요.\n#define PWM_DUTY_MAX 1000U\nvoid Motor_SetDuty(unsigned int duty)\n{\n    if (duty > PWM_DUTY_MAX)\n    {\n        /* ==== 여기에 코드를 작성하세요 ==== */\n    }\n}\n", "solution": "// 미션 2: 듀티 값을 안전 범위로 클램프하세요.\n#define PWM_DUTY_MAX 1000U\nvoid Motor_SetDuty(unsigned int duty)\n{\n    if (duty > PWM_DUTY_MAX)\n    {\n        duty = PWM_DUTY_MAX;\n    }\n}\n"}
+  ],
+  "rta": [
+    {"name": "CmdParse", "T": 5, "C": 0.3, "p": 4, "D": 5},
+    {"name": "MotorCtrl", "T": 5, "C": 0.8, "p": 3, "D": 5},
+    {"name": "Heartbeat", "T": 100, "C": 0.2, "p": 2, "D": 100}
+  ],
+  "schedTasks": [
+    {"name":"CmdParse","T":5,"C":0.3,"p":4},
+    {"name":"MotorCtrl","T":5,"C":0.8,"p":3},
+    {"name":"Heartbeat","T":100,"C":0.2,"p":2}
+  ]
+};
+function loadSampleF1(){ loadBundle(SAMPLE_BUNDLE_F1); }
 
 
 captureOriginal();
@@ -1853,14 +2141,289 @@ function goTab(id){
   document.querySelectorAll('main>section').forEach(function(s){ s.classList.toggle('on', s.id===id); });
   window.scrollTo({top:0,behavior:'smooth'});
 }
+function todayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function yesterdayStr(){ const d=new Date(); d.setDate(d.getDate()-1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function dailyProgress(){
   const card=document.getElementById('dailyCard');
   if(!card) return;
   const boxes=[].slice.call(card.querySelectorAll('input[type=checkbox]'));
-  const done=boxes.filter(function(b){return b.checked;}).length;
+  const today=todayStr();
+  if(!state.progress.daily || state.progress.daily.date!==today){
+    state.progress.daily={date:today, done:[false,false,false,false]};
+  }
+  boxes.forEach((b,i)=>{ state.progress.daily.done[i]=!!b.checked; });
+  const done=state.progress.daily.done.filter(Boolean).length;
   const bar=document.getElementById('dailyBar');
   if(bar) bar.style.width=(done/boxes.length*100)+'%';
+  if(done===boxes.length){
+    if(!state.progress.streak) state.progress.streak={n:0,last:''};
+    if(state.progress.streak.last!==today){
+      state.progress.streak.n=(state.progress.streak.last===yesterdayStr())?(state.progress.streak.n+1):1;
+      state.progress.streak.last=today;
+    }
+  }
+  saveState();
+  const streakEl=document.getElementById('dailyStreak');
+  if(streakEl){
+    const n=(state.progress.streak&&state.progress.streak.n)||0;
+    if(n>=1){
+      streakEl.innerHTML=n>=3?'<span style="color:var(--acc2);font-weight:700">🔥 '+n+'일 연속</span>':'🔥 '+n+'일 연속';
+    }else{
+      streakEl.textContent='오늘 4개 완료하면 streak 시작!';
+    }
+  }
 }
+function dailyInit(){
+  const card=document.getElementById('dailyCard');
+  if(!card) return;
+  const boxes=[].slice.call(card.querySelectorAll('input[type=checkbox]'));
+  const today=todayStr();
+  if(!state.progress.daily) state.progress.daily={date:today, done:[false,false,false,false]};
+  if(state.progress.daily.date===today){
+    boxes.forEach((b,i)=>{ b.checked=!!(state.progress.daily.done&&state.progress.daily.done[i]); });
+  }else{
+    state.progress.daily={date:today, done:[false,false,false,false]};
+    boxes.forEach(b=>{ b.checked=false; });
+  }
+  dailyProgress();
+}
+
+/* ============================================================
+   개선 3 — FreeRTOS 스케줄러 시뮬레이터 (선점형 고정 우선순위)
+   가상 시간 단위: ms. 우선순위는 클수록 높음 (FreeRTOS 관례와 동일).
+============================================================ */
+const SCHED_PALETTE={Watchdog:'#4cc38a',CAN_Rx:'#4aa3ff',Emergency:'#ffb84d',Sensor:'#e056fd',Actuator:'#22d3ee',Debug:'#ff6b6b',Firmware:'#a78bfa','E-Stop':'#f43f5e'};
+const SCHED_BASE_TASKS=[
+  {name:'Watchdog', T:100, C:5,   p:6},
+  {name:'CAN_Rx',   T:10,  C:1.5, p:5},
+  {name:'Emergency',T:50,  C:3,   p:4},
+  {name:'Sensor',   T:20,  C:4,   p:3},
+  {name:'Actuator', T:20,  C:2,   p:3},
+  {name:'Debug',    T:50,  C:4,   p:2},
+  {name:'Firmware', T:200, C:10,  p:1},
+];
+ORIGINAL.schedTasks=SCHED_BASE_TASKS.map(t=>({...t}));
+function schedClone(){ return SCHED_BASE_TASKS.map(function(t){ return Object.assign({},t); }); }
+const SCHED_SCENARIOS={
+  normal:{
+    name:'✅ 정상 부하 (U≈69%)',
+    desc:'모든 태스크가 데드라인 안에서 완료됩니다. 일부 태스크가 높은 우선순위로 CPU를 점유하여 다른 태스크의 데드라인 위반을 유발할 수 있습니다.',
+    tasks:schedClone(), horizon:200,
+  },
+  emergency:{
+    name:'🚨 긴급정지 이벤트',
+    desc:'t=42ms 에 최고 우선순위 E-Stop(우선순위 7, 30ms) 이 발생합니다. E-Stop이 30ms 동안 CPU를 독점하면서 낮은 우선순위 태스크들이 데드라인을 놓칩니다 — 안전 태스크는 반드시 최우선이어야 하는 이유입니다.',
+    tasks:(function(){ const a=schedClone(); a.push({name:'E-Stop', T:0, D:30, C:30, p:7, once:42}); return a; })(),
+    horizon:200,
+  },
+  overload:{
+    name:'🔥 과부하 (U>100%)',
+    desc:'태스크의 실행시간을 임의로 연장하여 낮은 우선순위 태스크들이 데드라인 위반을 일으키는 상황입니다. U=1.94 수준으로, RTA 로 미리 분석하여 안전성을 확보해야 합니다.',
+    tasks:(function(){ const a=schedClone(); a[3].C=15; a[6].C=150; return a; })(),
+    horizon:200,
+  },
+};
+// 번들 로드 시 시나리오 태스크를 현재 SCHED_BASE_TASKS 기준으로 재구성합니다.
+function schedRebuild(){
+  SCHED_SCENARIOS.normal.tasks=schedClone();
+  SCHED_SCENARIOS.emergency.tasks=(function(){ const a=schedClone(); a.push({name:'E-Stop', T:0, D:30, C:30, p:7, once:42}); return a; })();
+  // overload: 태스크가 적은 번들에서는 하드코딩 인덱스 대신 뒤 2개 태스크 부하를 증가시킵니다.
+  SCHED_SCENARIOS.overload.tasks=(function(){ const a=schedClone(); if(a.length>3) a[3].C=15; if(a.length>6) a[6].C=150; else { const k=Math.max(0,a.length-2); for(let i=k;i<a.length;i++) a[i].C*=3; } return a; })();
+  schedLoad(schedScn||'normal');
+}
+let schedScn='normal', schedData=null, schedT=0, schedTimer=null, schedSpeed=4;
+
+function schedSimulate(scn){
+  const horizon=scn.horizon, tasks=scn.tasks, n=tasks.length;
+  const nextRel=[], once=[], jobs=[], segs=[], relLog=[], miss=[], preempt=[];
+  for(let i=0;i<n;i++){
+    const isOnce=(typeof tasks[i].once==='number');
+    once.push(isOnce);
+    nextRel.push(isOnce? tasks[i].once : 0);
+  }
+  let t=0, cur=null;
+  function pick(now){
+    let best=null;
+    for(const j of jobs){
+      if(j.rel<=now+0.0001 && (best===null || j.p>best.p || (j.p===best.p && j.rel<best.rel))) best=j;
+    }
+    return best;
+  }
+  while(t<horizon-0.0001){
+    let nr=Infinity;
+    for(let i=0;i<n;i++){ if(nextRel[i]<nr) nr=nextRel[i]; }
+    const run=pick(t);
+    const comp=(run? t+run.rem : Infinity);
+    const nxt=Math.min(nr,comp,horizon);
+    if(nxt<=t+0.0001){
+      const rt=Math.min(nr,horizon);
+      for(let i=0;i<n;i++){
+        if(nextRel[i]<=rt+0.0001){
+          relLog.push({t:rt,i:i});
+          jobs.push({i:i,rel:rt,dl:rt+(tasks[i].D||tasks[i].T),rem:tasks[i].C,p:tasks[i].p});
+          if(once[i]) nextRel[i]=Infinity; else nextRel[i]+=tasks[i].T;
+        }
+      }
+      t=rt; continue;
+    }
+    if(run){
+      const was=cur;
+      if(was && was!==run && was.rem>0.0001) preempt.push({t:t, from:was.i, to:run.i});
+      segs.push({t0:t,t1:nxt,i:run.i,rel:run.rel});
+      run.rem-=(nxt-t);
+      cur=run;
+      if(run.rem<=0.0001){
+        run.comp=nxt;
+        if(nxt>run.dl+0.0001) miss.push({i:run.i,rel:run.rel,dl:run.dl,comp:nxt});
+        jobs.splice(jobs.indexOf(run),1);
+      }
+    } else { cur=null; }
+    t=nxt;
+    for(let i=0;i<n;i++){
+      if(nextRel[i]<=t+0.0001){
+        relLog.push({t:t,i:i});
+        jobs.push({i:i,rel:t,dl:t+(tasks[i].D||tasks[i].T),rem:tasks[i].C,p:tasks[i].p});
+        if(once[i]) nextRel[i]=Infinity; else nextRel[i]+=tasks[i].T;
+      }
+    }
+  }
+  const busy=segs.reduce(function(a,s){return a+(s.t1-s.t0);},0);
+  const util=busy/horizon;
+  return {tasks:tasks,horizon:horizon,segs:segs,relLog:relLog,miss:miss,preempt:preempt,util:util};
+}
+function schedColor(name){ return SCHED_PALETTE[name]||'#8888ff'; }
+function schedDraw(){
+  const c=document.getElementById('schedCanvas'); if(!c) return;
+  const data=schedData; if(!data) return;
+  const tasks=data.tasks, n=tasks.length;
+  const W=c.width, labelW=96, padR=12;
+  const plotW=W-labelW-padR;
+  const rowH=30, headH=26;
+  c.height=headH+n*rowH+6;
+  const ctx=c.getContext('2d');
+  ctx.clearRect(0,0,W,c.height);
+  ctx.font='11px "Segoe UI",sans-serif';
+  const pxPerMs=plotW/data.horizon;
+  const minor=(data.horizon>=100?10:5), major=(data.horizon>=100?50:20);
+  ctx.strokeStyle='#152238'; ctx.lineWidth=1;
+  for(let x=0;x<=data.horizon;x+=minor){ const px=labelW+x*pxPerMs; ctx.beginPath(); ctx.moveTo(px,0); ctx.lineTo(px,c.height); ctx.stroke(); }
+  ctx.strokeStyle='#1d3352';
+  for(let x=0;x<=data.horizon;x+=major){
+    const px=labelW+x*pxPerMs; ctx.beginPath(); ctx.moveTo(px,0); ctx.lineTo(px,c.height); ctx.stroke();
+    ctx.fillStyle='#8aa0c0'; ctx.textAlign='center'; ctx.fillText(x+'ms', px, 14);
+  }
+  for(let i=0;i<n;i++){
+    const y=headH+i*rowH;
+    ctx.fillStyle=(i%2)?'rgba(255,255,255,0.02)':'rgba(0,0,0,0.15)';
+    ctx.fillRect(labelW-10, y, plotW+padR, rowH);
+    const col=schedColor(tasks[i].name);
+    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(12, y+rowH/2, 5, 0, 7); ctx.fill();
+    ctx.fillStyle='#d6e4ff'; ctx.textAlign='left'; ctx.fillText(tasks[i].name, 24, y+13);
+    ctx.fillStyle='#7d93b5'; ctx.fillText('p'+tasks[i].p, 24, y+25);
+    for(const r of data.relLog){ if(r.i!==i) continue; const px=labelW+r.t*pxPerMs;
+      ctx.strokeStyle=col; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(px,y+6); ctx.lineTo(px,y+rowH-6); ctx.stroke();
+    }
+    for(const s of data.segs){ if(s.i!==i) continue;
+      const x0=labelW+s.t0*pxPerMs, x1=Math.max(x0+2, labelW+s.t1*pxPerMs);
+      ctx.fillStyle=col; ctx.fillRect(x0, y+8, x1-x0, rowH-16);
+    }
+  }
+  for(const m of data.miss){
+    const px=labelW+m.dl*pxPerMs, y=headH+m.i*rowH;
+    ctx.strokeStyle='#ff5d5d'; ctx.lineWidth=2; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(px,y); ctx.lineTo(px,y+rowH); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='#ff5d5d'; ctx.font='bold 12px sans-serif'; ctx.fillText('✕', px+3, y+rowH-4);
+  }
+  const px=labelW+schedT*pxPerMs;
+  ctx.strokeStyle='#ffd166'; ctx.lineWidth=2; ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(px,0); ctx.lineTo(px,c.height); ctx.stroke(); ctx.setLineDash([]);
+}
+function schedPanel(){
+  const d=schedData; if(!d) return;
+  const el=function(id){ return document.getElementById(id); };
+  const utilEl=el('schedUtil'), missEl=el('schedMiss'), runEl=el('schedRunning'), nowEl=el('schedNow'), logEl=el('schedLog');
+  if(utilEl) utilEl.textContent=(d.util*100).toFixed(1)+'%';
+  const m=d.miss.filter(function(x){return x.comp<=schedT+0.0001;}).length;
+  if(missEl){ missEl.textContent=m+'건'; missEl.style.color=m?'var(--crit)':'#4cc38a'; }
+  let runName='(유휴 idle)';
+  for(const s of d.segs){ if(s.t0<=schedT+0.0001 && schedT<s.t1-0.0001){ runName=d.tasks[s.i].name+' (p'+d.tasks[s.i].p+')'; break; } }
+  if(runEl) runEl.textContent=runName;
+  if(nowEl) nowEl.textContent='시간: '+schedT.toFixed(1)+' / '+d.horizon+' ms';
+  if(logEl){
+    const items=[];
+    for(const p of d.preempt){ if(p.t<=schedT+0.0001){ items.push('<div>⚡ <b>t='+p.t.toFixed(1)+'</b> '+d.tasks[p.from].name+'(p'+d.tasks[p.from].p+') → '+d.tasks[p.to].name+'(p'+d.tasks[p.to].p+') 선점</div>'); } }
+    for(const x of d.miss){ if(x.comp<=schedT+0.0001){ items.push('<div style="color:var(--crit)">✕ <b>t='+x.comp.toFixed(1)+'</b> '+d.tasks[x.i].name+' 데드라인 위반 (dl='+x.dl.toFixed(1)+')</div>'); } }
+    items.reverse();
+    logEl.innerHTML='<div class="dim" style="font-weight:bold;margin-bottom:4px">이벤트 로그 (선점 · 데드라인 위반)</div>'+
+      (items.length? items.slice(0,8).join('') : '<div class="dim">아직 이벤트 없음 — 재생 또는 한 스텝을 눌러 보세요.</div>');
+  }
+}
+function schedStep(){
+  const d=schedData; if(!d) return;
+  let nxt=d.horizon;
+  const evs=[];
+  for(const s of d.segs){ evs.push(s.t0,s.t1); }
+  for(const r of d.relLog) evs.push(r.t);
+  for(const m of d.miss) evs.push(m.comp);
+  evs.push(0);
+  for(const e of evs){ if(e>schedT+0.001 && e<nxt) nxt=e; }
+  schedT=nxt;
+  schedDraw(); schedPanel();
+  if(schedT>=d.horizon-0.0001){ schedPause(); }
+}
+function schedToggle(){
+  if(schedTimer){ schedPause(); }
+  else{
+    if(schedT>=schedData.horizon-0.0001) schedT=0;
+    schedTimer=setInterval(function(){
+      schedT+=schedSpeed;
+      if(schedT>=schedData.horizon){ schedT=schedData.horizon; schedDraw(); schedPanel(); schedPause(); return; }
+      schedDraw(); schedPanel();
+    }, 50);
+    const b=document.getElementById('schedPlayBtn'); if(b) b.textContent='⏸ 일시정지';
+  }
+}
+function schedPause(){
+  if(schedTimer){ clearInterval(schedTimer); schedTimer=null; }
+  const b=document.getElementById('schedPlayBtn'); if(b) b.textContent='▶ 재생';
+}
+function schedReset(){ schedT=0; schedPause(); schedDraw(); schedPanel(); }
+function schedLoad(key){
+  schedScn=key;
+  schedData=schedSimulate(SCHED_SCENARIOS[key]);
+  const d=document.getElementById('schedDesc');
+  if(d) d.innerHTML='<b>'+SCHED_SCENARIOS[key].name+'</b> — '+SCHED_SCENARIOS[key].desc;
+  schedReset();
+}
+schedLoad('normal');
+
+
+// ============================================================
+// 사용자 가이드 (User Guide)
+// ============================================================
+// 번들 시스템으로 STM32 프로젝트를 교체하는 방법:
+// 1. '📦 샘플 프로젝트 로드' 버튼: 온도 경보 시스템 (STM32F4) 로드
+// 2. '⚙️ STM32F1 샘플 로드' 버튼: 시리얼 모터 컨트롤러 (STM32F1) 로드
+// 3. '내 프로젝트 JSON 로드': sample_bundle.json 또는 sample_bundle_f1.json 내용으로 교체 가능
+// 4. 스케줄러 태스크 교체: 번들에 schedTasks 필드가 있으면 자동 적용, 없으면 기존 7개 유지
+// 5. 진행도 보존: 번들 전환 시 SRS·streak·일일목표가 lastProgress에 보존되며 restoreOriginal()로 복구
+//
+// 주요 기능:
+// - 코드 학습 탭: files 교체로 소스 코드 표시 가능
+// - 학습 경로: path 교체로 모듈·목표·읽기 포인트 자유 구성
+// - 퀴즈·주관식: quiz·subquiz 교체로 문제 구성 자유롭게 변경
+// - 미션: missions 교체로 자체 완결형 C 템플릿 적용 (gcc 검증)
+// - RTA 계산기: rta 교체로 프로젝트 태스크로 응답시간 분석 가능
+// - 스케줄러 시뮬레이터: schedTasks 교체로 태스크 목록 자동 교체 (이전 수동 수정 지점 제거)
+// - 시나리오 설명: 번들 태스크에 맞게 자동 재구성 (이전 7태스크 고정 설명 완화)
+//
+// 남은 제약 (honest constraints):
+// - 미션 gcc 스텁: FreeRTOS API(task.h/semphr.h/bsp_can.h) 외 함수 호출 시 컴파일 실패
+//   (서버 build_server.py에 stubs 필드 추가 시 해결 가능)
+// - 학습 진행도 초기화: 번들 전환 시 state.progress={} 리셋 (lastProgress 보존 기능 참조)
+// - 시나리오 desc: 신규 번들에 맞게 자동 재구성됨 (이전 고정 설명 완화)
+//
+// 이식성 증명: 온도 경보(F4) ↔ 모터 컨트롤러(F1) 전환 시 모든 영역이 버튼 1클릭으로 교체됨.
 
 
 </script>
