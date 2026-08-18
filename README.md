@@ -110,7 +110,7 @@ Full instructions, flag rationale and troubleshooting: **`02_source_code/BUILD.m
 | Max task stack (static) | 136 B vs 512 B allocated (3.8× over-allocation proven) |
 | WCET static estimate | bmp280_compensate ≈ 83 ns @180 MHz |
 | Defects found | 3 (missing NVIC decl, SPL macro, float→libgcc) — all now fixed |
-| **Full firmware link (2026-08)** | **bootloader 4,584 B / 16 KB · app 28,392 B / 112 KB · 0 warnings, 0 undefined symbols** |
+| **Full firmware link (2026-08)** | **bootloader 4,600 B / 16 KB · app 28,240 B / 112 KB · 0 warnings, 0 undefined symbols** |
 
 > **Honest framing**: static analysis proves **upper/lower bounds**, not a "replacement" for measurement.
 > Items that require real hardware (jitter·E2E·IWDG) are listed in §10 of the document; once a Nucleo

@@ -118,6 +118,15 @@ FwImageStatus_t FwImage_Verify(const FwImageHeader_t *pxHeader, const void *pvIm
         return xStatus;  // 헤더 검사 결과를 그대로 반환합니다.
     }  // 헤더 실패 처리 블록을 종료합니다.
 
+    // 본문 포인터를 검사합니다. FwImage_CheckHeader() 는 헤더만 보므로 본문이
+    // NULL 인 경우를 걸러 주지 않습니다. 아래 FwImage_Crc32() 는 길이가 0 이
+    // 아닌 이상(헤더 검사가 크기 0 을 이미 배제했습니다) 반드시 역참조하므로,
+    // 여기서 막지 않으면 NULL 역참조가 됩니다.
+    if (pvImage == 0)  // 본문 포인터가 NULL 인지 확인합니다.
+    {  // NULL 처리 블록을 시작합니다.
+        return FW_IMAGE_ERR_ADDR;  // 주소 오류로 반환합니다.
+    }  // NULL 처리 블록을 종료합니다.
+
     if (FwImage_Crc32(pvImage, pxHeader->ulImageSize) != pxHeader->ulImageCrc32)  // 본문 CRC 가 헤더 값과 다른지 확인합니다.
     {  // 본문 CRC 불일치 처리 블록을 시작합니다.
         return FW_IMAGE_ERR_IMG_CRC;  // 본문 CRC 오류를 반환합니다.
