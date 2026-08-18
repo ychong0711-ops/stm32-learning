@@ -8,6 +8,7 @@ BaseType_t xTaskCreate(void (*pxTaskCode)(void *), const char *pcName,
 void vTaskDelay(TickType_t xTicksToDelay);
 void vTaskDelayUntil(TickType_t *pxPreviousWakeTime, TickType_t xTimeIncrement);
 void vTaskSuspend(TaskHandle_t xTaskToSuspend);
+void vTaskResume(TaskHandle_t xTaskToResume);
 void vTaskSuspendAll(void);
 BaseType_t xTaskResumeAll(void);
 void vTaskStartScheduler(void);

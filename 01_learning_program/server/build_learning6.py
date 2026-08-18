@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# [보관용 — 실행하지 말 것]
+# 이 HTML 을 만들어 온 일회성 UI 주입 스크립트다. 결과는 이미
+# learning_program.html 에 반영되어 있고, 작성 당시의 절대 경로를
+# 그대로 들고 있어 지금 실행하면 실패한다. 자세한 내용은 server/README.md 참조.
+# 소스 스냅샷 갱신은 refresh_html_sources.py 를 쓴다.
 """
 build_learning6.py — Phase 1: 번들 로더 + manifest 포맷 (멱등)
   - "📦 프로젝트" 탭 추가: 다른 STM32F4·FreeRTOS·C 프로젝트를 로드
