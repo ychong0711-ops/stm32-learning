@@ -57,13 +57,15 @@ Interrupt calculator / Project loader (manifest)
 ├── app/                    ← integration layer: IRQ handlers, FreeRTOSConfig.h, hooks, tiny libc/printf
 ├── startup/ · system/      ← CMSIS startup assembly + SystemInit
 ├── linker/                 ← two linker scripts (0x08000000 boot / 0x08004000 app)
-├── tools/                  ← make_image.py (firmware header + CRC-32), make_combined.py
+├── tools/                  ← make_image.py (firmware header + CRC-32), make_combined.py,
+│                             make_stage_blob.py (staging-area blob, incl. fault injection)
 ├── docs/
 │   ├── docs_realtime_theory_proof.md         ← real-time theory mathematical proof (RMS/LL/Bini/RTA)
 │   ├── docs_measurement_plan.md              ← measurement plan (stack·load·jitter·E2E·watchdog)
 │   ├── docs_measurement_report_template.md   ← measurement report template
 │   ├── docs_autosar_iso26262.md              ← AUTOSAR·ISO 26262 concepts + project mapping
 │   ├── docs_bootloader_design.md             ← staging-based firmware update + sector-0 bootloader
+│   ├── hardware_validation_guide.html        ← on-target validation guide (NUCLEO-F446RE, open in a browser)
 │   └── docs_motivation_letter.md             ← motivation letter draft (English)
 └── rta_analysis.py         ← response-time analysis calculator (re-runnable)
 ```

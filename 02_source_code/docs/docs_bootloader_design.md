@@ -321,7 +321,16 @@ st-flash --reset write combined.bin 0x08000000
 | 서명 검증 (ECDSA 등) | 없음. CRC-32 는 **우연한 손상**만 잡는다. 악의적 변조는 못 막는다. 보안이 필요하면 서명이 따로 있어야 한다. |
 | A/B 뱅크 롤백 | 없음. 섹터 6~7(256KB)이 비어 있어 자리는 있다. 지금은 "설치 실패 시 기존 앱 유지"까지만 된다. |
 | 이미지 수신 경로 | CAN 으로 받는 실제 전송 프로토콜(분할·재전송·흐름 제어)은 미구현. `Bootloader_BeginStaging`/`WriteChunk`/`FinishStaging` 인터페이스만 준비됨. |
-| 실제 하드웨어 검증 | **미수행.** 아래 §11 은 전부 정적/호스트 검증이다. |
+| 실제 하드웨어 검증 | **미수행.** 아래 §11 은 전부 정적/호스트 검증이다. 보드를 구하면 [`hardware_validation_guide.html`](hardware_validation_guide.html) 의 절차를 그대로 따르면 된다. |
+
+### 실물 검증 가이드
+
+보드에서 확인해야 할 항목은 별도 문서로 정리해 두었다 — **[`hardware_validation_guide.html`](hardware_validation_guide.html)** (브라우저로 열 것).
+
+배선·플래싱부터 설치/거부/자동복구 시험, IWDG 마진 측정, 고장 주입까지 8개 항목의
+방법·합격 기준·실패 시 조치와 기록지를 담고 있다. 전송 프로토콜이 없어도 부트로더를
+검증할 수 있도록, 스테이징 영역에 이미지를 직접 주입하는 도구
+`tools/make_stage_blob.py` 를 함께 제공한다 (`--corrupt`, `--break-magic` 으로 고장 주입 가능).
 
 ---
 
