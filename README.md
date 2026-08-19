@@ -100,7 +100,7 @@ Full instructions, flag rationale and troubleshooting: **`02_source_code/BUILD.m
 ├── static_proof_method.md  ← ★ core document (methodology + actual results + ready-to-use sentences)
 ├── stack_analyzer.py       ← call-graph based worst-case stack calculator
 ├── wcet_demo/              ← WCET cycle-counting demo
-├── cmsis/                  ← real STM32F446 CMSIS/HAL headers (50+ files)
+├── cmsis/                  ← real STM32F446 CMSIS/HAL headers (49 files)
 └── analysis_results/       ← actual .su/.ci static analysis artifacts
 ```
 
@@ -144,12 +144,17 @@ Full instructions, flag rationale and troubleshooting: **`02_source_code/BUILD.m
 | A/B bank rollback | medium | sectors 6–7 (256 KB) are free; today it is "keep old app on failure" |
 | AURIX introduction | 🥉 differentiator | automotive safety MCU standard |
 | AUTOSAR·ISO 26262 deepening | parallel | concept → practice |
-| Re-sync `learning_program.html` code snapshot | 🥉 low | code-browser tab still embeds the pre-v2 `main_fixed.c` |
 
 > **Resolved in 2026-08**: the project previously had no startup file, linker script or Makefile,
 > never called `HAL_Init()`, and had no SysTick/IRQ entry points — it could not actually be built
 > or booted. It also flashed *itself* while running, which had an unrecoverable brick window.
 > Both are fixed: see `02_source_code/BUILD.md` and `02_source_code/docs/docs_bootloader_design.md`.
+>
+> **Resolved in 2026-08-19**: `learning_program.html` code snapshot re-synced to the v2 `main_fixed.c`
+> (watchdog heartbeats, emergency-stop latch, keep-latest queue are now visible in the code browser);
+> `commented_build/main_build.c` regenerated, `stack_analyzer.py` re-pointed to `analysis_results/` and
+> re-runnable, `rta_analysis.py` no longer crashes on Windows consoles, and the WCET/static-proof docs
+> now match the disassembled artifacts (13 instructions ≈ 78 ns) with lower-bound framing.
 
 ---
 

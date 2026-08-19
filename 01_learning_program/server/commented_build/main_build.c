@@ -15,8 +15,23 @@
 // - 수정: 긴급 정지는 CAN 수신 태스크에서 큐를 거치지 않고 즉시 안전 상태를
 // 적용(prvEmergencyStop). 뮤텍스는 portMAX_DELAY로 획득을 보장.
 // --------------------------------------------------------------------------
-// BSP 함수들(CAN_Receive, ADC_ReadChannel, PWM_SetDuty 등)은 실제 드라이버 함수가
-// 존재한다고 가정한 코드입니다.
+// [2차 안전 수정 (2026-08-18, 자체 리뷰 반영)] — 발견~조치 내역은 README §8 참조
+// - [2-1] IWDG 실제 활성화: 기존(초기 커밋)에는 IWDG_Init() 호출이 어디에도 없어
+//   워치독 하드웨어가 켜지지 않았고 모든 피드가 no-op였음. 이는 통합 계층(PR #1)에서
+//   main()의 IWDG_Init(4000ms)로 이미 해결되었으므로, 본 2차 수정에서는 별도 호출을
+//   추가하지 않는다(스테이징 섹터 삭제 2초 마진을 고려한 4초 타임아웃을 그대로 사용).
+// - [2-2] CAN 수신 lost-wakeup 제거(bsp_can.c): 알림이 바이너리 세마포어(최대 1)인데
+//   링 버퍼는 16칸이라, 버스트 수신 시 링에 메시지가 남아 있어도 세마포어 토큰
+//   소진으로 태스크가 블록할 수 있었음. 세마포어 대기 전 링 잔여를 먼저 확인.
+// - [2-3] 긴급 정지 래치: prvEmergencyStop() 후 안전 상태를 래치하고, 시스템
+//   리셋 전까지 큐에 남은 과거 명령(CMD_THROTTLE 등)이 액추에이터를 재가동하는
+//   것을 차단. 유실 방지(수정 2)에 이어 안전 상태 "유지"를 보장.
+// - [2-4] 센서 큐 keep-latest 전략: 생산 100Hz 대비 디버그 소비 ~18Hz 미스매치로
+//   큐(16)가 부팅 직후 만석되고 drop 카운터가 폭주하던 구조적 문제를, 길이 1 +
+//   xQueueOverwrite(최신값 유지)로 해결.
+// - [2-5] 우선순위 분리: Sensor(10ms)=4 > Actuator(20ms)=3으로 RMS 정합성 확보.
+//   동일 우선순위 타임슬라이싱 간섭이 RTA에 모델링되지 않는 모호함 제거.
+// --------------------------------------------------------------------------
 // 
 
 #include "stm32f4xx_hal.h" // HAL_Init() 등 HAL 공통 API를 사용하기 위해 포함합니다. (통합 계층 보강)
@@ -46,13 +61,13 @@
 
 #define TASK_WATCHDOG_PRIORITY 6U // 워치독 태스크는 최상위 우선순위로 두어 항상 실행되도록 합니다.
 #define TASK_CAN_PRIORITY 5U // CAN 수신 태스크는 두 번째로 높은 우선순위로 설정합니다.
-#define TASK_SENSOR_PRIORITY 3U // 센서 태스크는 중간 우선순위로 설정합니다.
+#define TASK_SENSOR_PRIORITY 4U // 센서 태스크 우선순위. (2차 수정) Actuator(20ms)보다 주기가 짧으므로 RMS에 따라 한 단계 위에 배치합니다.
 #define TASK_ACTUATOR_PRIORITY 3U // 액추에이터 태스크는 중간 우선순위로 설정합니다.
 #define TASK_DEBUG_PRIORITY 2U // 디버깅 태스크는 낮은 우선순위로 설정합니다.
 #define TASK_FIRMWARE_PRIORITY 1U // 펌웨어 업데이트 태스크는 가장 낮은 우선순위로 설정합니다.
 
 #define ACTUATOR_CMD_QUEUE_LEN 16U // 액추에이터 명령 큐의 최대 깊이를 정의합니다.
-#define SENSOR_DATA_QUEUE_LEN 16U // 센서 데이터 큐의 최대 깊이를 정의합니다.
+#define SENSOR_DATA_QUEUE_LEN 1U // 센서 데이터 큐 길이. (2차 수정) keep-latest 전략으로 길이 1 + xQueueOverwrite를 사용해 항상 최신값만 유지합니다.
 
 #define WATCHDOG_CHECK_PERIOD_MS 100U // 워치독 태스크의 하트비트 검사 주기를 100ms로 정의합니다.
 #define CAN_RX_TIMEOUT_MS 10U // CAN 수신 타임아웃을 10ms로 정의합니다.
@@ -75,7 +90,8 @@
 #define CAN_SPEED_500KBPS 500000U // CAN 통신 속도를 500kbps로 정의합니다.
 
 // IWDG 리로드 값(타임아웃)은 워치독 검사 주기(100ms)보다 충분히 크게 설정해야 합니다.
-// 예: IWDG 프리스케일러/리로드를 조합하여 약 1초로 설정하는 것을 권장합니다. 
+// 실제 활성화는 통합 계층(PR #1)에서 main()의 IWDG_Init(4000ms)로 수행합니다.
+// 참고: LSI(32kHz 공칭)는 칩별 편차가 있어 실제 타임아웃은 칩에 따라 달라질 수 있습니다.
 
 // [통합 시 삭제됨] CAN_Message_t 는 bsp_can.h 가 정의합니다.
 // 원래 이 자리에는 동일한 내용의 typedef 가 중복되어 있었습니다. 익명 구조체
@@ -139,12 +155,16 @@ static volatile BaseType_t xFirmwareUpdateActive = pdFALSE; // 펌웨어 업데�
 // 32비트 카운터가 한 검사 주기(100ms) 안에 2^32번 증가할 수 없으므로,
 // 이전 값과의 단순 비교만으로도 오버플로(wrap)에 안전합니다. 
 
+// ---- 긴급 정지 래치 (2차 수정) ---- 
+static volatile BaseType_t xEmergencyStopLatched = pdFALSE; // 긴급 정지 래치 플래그. 설정되면 안전 상태 해제는 시스템 리셋으로만 가능합니다.
+
 // ---- 오류 카운터: 빈 문장(;) 대신 실제 진단용 카운터로 대체 ---- 
 static volatile uint32_t ulErrCount_ActuatorQueueFull = 0U; // 액추에이터 명령 큐 가득 참 횟수입니다.
 static volatile uint32_t ulErrCount_SensorQueueFull = 0U; // 센서 데이터 큐 가득 참 횟수입니다.
 static volatile uint32_t ulErrCount_ActuatorMutexFail = 0U; // 액추에이터 뮤텍스 획득 실패 횟수입니다.
 static volatile uint32_t ulErrCount_DebugMutexFail = 0U; // 디버그 뮤텍스 획득 실패 횟수입니다.
 static volatile uint32_t ulErrCount_FirmwareStageInvalid = 0U; // 스테이징 이미지 검증 실패 횟수입니다.
+static volatile uint32_t ulErrCount_EmergencyLatchedDrop = 0U; // (2차 수정) 긴급 정지 래치 중 버려진 과거 명령의 횟수입니다.
 
 void vTask_Watchdog(void *pvParameters); // 워치독 태스크 함수의 프로토타입을 선언합니다.
 void vTask_CAN_Rx(void *pvParameters); // CAN 수신 태스크 함수의 프로토타입을 선언합니다.
@@ -259,9 +279,12 @@ void vTask_Sensor(void *pvParameters) // 센서 수집 태스크 함수를 정�
         xSensorData.throttle = ADC_ReadChannel(ADC_CHANNEL_THROTTLE); // 스로틀 센서 값을 ADC로 읽습니다.
         xSensorData.timestamp = xTaskGetTickCount(); // 센서 읽기 시점의 타임스탬프를 저장합니다.
 
-        if (xQueueSend(xQueue_Sensor_Data, &xSensorData, 0U) != pdPASS) // 센서 데이터 큐에 데이터 전송을 시도하고 실패 여부를 확인합니다.
+        // (2차 수정) keep-latest: 생산(100Hz)이 소비(Debug, ~18Hz)보다 빠르므로
+// 큐가 만석되는 것이 설계상 항상 발생한다. 길이 1 큐에 덮어쓰면 가장 최근
+// 측정값만 유지되고, 초당 수십 건의 drop 카운터 폭주도 사라진다. 
+        if (xQueueOverwrite(xQueue_Sensor_Data, &xSensorData) != pdPASS) // 센서 데이터 큐에 최신 데이터를 덮어써서 저장을 시도합니다.
         { // 센서 데이터 큐 전송 실패 처리 블록을 시작합니다.
-            ulErrCount_SensorQueueFull++; // 큐 가득 참으로 센서 데이터가 유실된 횟수를 기록합니다.
+            ulErrCount_SensorQueueFull++; // (길이 1 큐에서는 실패하지 않지만) 진단용 카운터를 유지합니다.
         } // 센서 데이터 큐 전송 실패 처리 블록을 종료합니다.
 
         vTaskDelayUntil(&xLastWakeTime, xPeriod); // 다음 10ms 주기까지 태스크를 지연시켜 정밀한 주기를 유지합니다.
@@ -287,7 +310,13 @@ void vTask_Actuator(void *pvParameters) // 액추에이터 제어 태스크 함�
         xStatus = xQueueReceive(xQueue_ActuatorCmd, &xCmd, xQueueTimeout); // 액추에이터 명령 큐에서 명령 수신을 시도합니다.
         if (xStatus == pdPASS) // 명령 큐에서 명령을 정상적으로 수신했는지 확인합니다.
         { // 명령 수신 성공 처리 블록을 시작합니다.
-            if (xSemaphoreTake(xSemaphore_Actuator, pdMS_TO_TICKS(ACTUATOR_MUTEX_TIMEOUT_MS)) == pdTRUE) // 액추에이터 뮤텍스 획득을 시도하고 성공 여부를 확인합니다.
+            if ((xEmergencyStopLatched != pdFALSE) && (xCmd.commandId != CMD_EMERGENCY_STOP)) // (2차 수정) 긴급 정지 래치 중인지, 그리고 긴급 정지 명령이 아닌지 확인합니다.
+            { // 래치 중 과거 명령 차단 블록을 시작합니다.
+                ulErrCount_EmergencyLatchedDrop++; // 래치 이전에 큐에 들어온 과거 명령을 버린 횟수를 기록합니다.
+                // 긴급 정지 이후 안전 상태는 시스템 리셋으로만 해제되므로, 스로틀/팬
+                // 재가동 명령은 락아웃합니다. (안전 상태 "유지" 보장) 
+            } // 래치 중 과거 명령 차단 블록을 종료합니다.
+            else if (xSemaphoreTake(xSemaphore_Actuator, pdMS_TO_TICKS(ACTUATOR_MUTEX_TIMEOUT_MS)) == pdTRUE) // 액추에이터 뮤텍스 획득을 시도하고 성공 여부를 확인합니다.
             { // 액추에이터 뮤텍스 획득 성공 블록을 시작합니다.
                 prvApplyActuatorCommand(&xCmd); // 수신된 명령을 실제 PWM/GPIO 출력에 적용합니다.
                 xSemaphoreGive(xSemaphore_Actuator); // 사용이 끝난 액추에이터 뮤텍스를 반환합니다.
@@ -365,12 +394,15 @@ static void prvApplyActuatorCommand(const ActuatorCmd_t *pxCmd) // 액추에이�
 } // 액추에이터 명령 적용 함수를 종료합니다.
 
 // --------------------------------------------------------------------------
-// 긴급 정지 (수정 2)
+// 긴급 정지 (수정 2 + 2차 수정 래치)
 // 큐를 거치지 않고 호출 즉시 안전 상태를 적용합니다.
 // 뮤텍스는 portMAX_DELAY로 획득을 보장하므로 명령이 유실되지 않습니다.
+// (2차 수정) 적용 후 안전 상태를 래치하여, 큐에 남아 있던 과거 명령이
+// 액추에이터를 재가동하는 것을 시스템 리셋 전까지 차단합니다.
 // -------------------------------------------------------------------------- 
 static void prvEmergencyStop(void) // 긴급 정지 함수를 정의합니다.
 { // 긴급 정지 함수 본문을 시작합니다.
+    xEmergencyStopLatched = pdTRUE; // (2차 수정) 안전 상태를 래치합니다. 해제는 시스템 리셋으로만 가능합니다.
     if (xSemaphoreTake(xSemaphore_Actuator, portMAX_DELAY) == pdTRUE) // 긴급 경로이므로 무한 대기로 액추에이터 뮤텍스 획득을 보장합니다.
     { // 액추에이터 뮤텍스 획득 성공 블록을 시작합니다.
         PWM_SetDuty(PWM_CHANNEL_THROTTLE, 0U); // 스로틀 PWM을 0으로 설정하여 출력을 차단합니다.
@@ -589,7 +621,27 @@ int main(void) // 프로그램 진입점 main 함수를 정의합니다.
 // 시작해야 하며, 리셋 원인 플래그는 켜기 전에 읽어 두어야 의미가 있습니다. 
     ulResetCause = IWDG_GetResetFlags(); // 직전 리셋 원인(RCC->CSR 플래그)을 보존합니다.
     IWDG_ClearResetFlags(); // 다음 부팅에서 원인을 구분할 수 있도록 플래그를 지웁니다.
-    IWDG_Init(1000U); // 독립 워치독을 1초 타임아웃으로 시작합니다.
+
+    // [타임아웃 산정 근거] 워치독 타임아웃은 "정상 동작 중 피드가 끊길 수 있는
+    // 가장 긴 구간"보다 커야 합니다. 이 앱에서 그 구간은 태스크 주기가 아니라
+    // 스테이징 영역 삭제입니다.
+    //
+    // Bootloader_BeginStaging() 은 128KB 단일 섹터(섹터 5)를 삭제하는데,
+    // STM32F446 의 128KB 섹터 삭제는 전형 1초 / 최악 2초가 걸립니다. 더 중요한 것은
+    // 삭제 중 CPU 가 같은 뱅크에서 명령을 페치하지 못해 완전히 멈춘다는 점입니다.
+    // 멈춰 있는 동안에는 어떤 태스크도 실행되지 않으므로 IWDG 를 피드할 수 없습니다.
+    // (Flash_SetProgressHook() 은 삭제 "전후"에만 호출될 뿐, 삭제 "도중"에는
+    //  CPU 가 정지해 있어 아무것도 실행할 수 없습니다.)
+    //
+    // 따라서 1초 타임아웃으로는 정상적인 펌웨어 수신조차 워치독 리셋을 유발합니다.
+    // 최악 삭제 시간 2초에 LSI 편차(공칭 32kHz, 실제 17~47kHz)를 고려한 마진을
+    // 더해 4초로 설정합니다. LSI 가 빠른 쪽으로 치우쳐도 실제 타임아웃이
+    // 2초 아래로 내려가지 않도록 하는 값입니다.
+    //
+    // 트레이드오프: 태스크 정지 검출이 1초에서 4초로 느려집니다. 이를 보완하기 위해
+    // 워치독 태스크는 100ms 주기 하트비트 검사를 그대로 유지하며, 하트비트가
+    // 끊기면 IWDG 만료를 기다리지 않고 스스로 피드를 멈춥니다.
+    IWDG_Init(4000U); // 독립 워치독을 4초 타임아웃으로 시작합니다. (최악 섹터 삭제 2초 + 마진)
 
     xQueue_ActuatorCmd = xQueueCreate(ACTUATOR_CMD_QUEUE_LEN, sizeof(ActuatorCmd_t)); // 액추에이터 명령 큐를 생성합니다.
     xQueue_Sensor_Data = xQueueCreate(SENSOR_DATA_QUEUE_LEN, sizeof(SensorData_t)); // 센서 데이터 큐를 생성합니다.

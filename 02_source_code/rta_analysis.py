@@ -17,6 +17,11 @@ Sensor=4 > Actuator=3 으로 분리하여 이 가정을 코드가 만족하도�
 """
 import math
 
+# Windows 기본 콘솔(cp949)에서 이모지 출력이 UnicodeEncodeError로 크래시하는 것을 방지.
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 # ---------------------------------------------------------------------------
 # 태스크셋 정의 (T: 주기/최소도착간격 ms, C: WCET 추정 ms, p: 우선순위(클수록 높음), D: 데드라인 ms)
 #   WCET 는 "추정치"이며, 실측(DWT/SystemView) 후 반드시 재계산해야 함.

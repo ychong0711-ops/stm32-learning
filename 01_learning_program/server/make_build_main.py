@@ -79,4 +79,4 @@ if removed_names:
     print('생성:', DST, len(out), '줄 (원본', len(lines), '줄,',
           len(to_del), '줄 제거:', ', '.join(removed_names), ')')
 else:
-    print('생성:', DST, len(out), '줄 (중복 typedef 없음 — 원본을 그대로 복사)')
+    print('생성:', DST, len(out), '줄 (중복 typedef 없음 - 원본을 그대로 복사)')

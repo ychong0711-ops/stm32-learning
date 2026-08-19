@@ -7,7 +7,7 @@
 - `static_proof_method.md` — ★ core document (method + results + ready-to-use sentences)
 - `stack_analyzer.py` — call-graph based worst-case stack calculator (re-runnable)
 - `wcet_demo/` — WCET cycle-counting demo
-- `cmsis/` — real STM32F446 CMSIS/HAL headers (50+ files)
+- `cmsis/` — real STM32F446 CMSIS/HAL headers (49 files)
 - `analysis_results/` — actual .su/.ci static analysis artifacts
 
 ## Key results

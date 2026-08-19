@@ -57,10 +57,18 @@ def main():
     roots = sys.argv[1:]                      # 예: vTask_Watchdog vTask_CAN_Rx ...
     frames = {}
     edges = defaultdict(set)
-    import glob
-    for su in glob.glob('build_su/*.su') + glob.glob('build_ci/*.su'):
+    import glob, os
+    # 실제 산출물 위치: analysis_results/ (예전 build_su/ build_ci/ 경로가 아님)
+    base = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'analysis_results')
+    su_files = glob.glob(os.path.join(base, '*.su'))
+    ci_files = glob.glob(os.path.join(base, '*.ci'))
+    for su in su_files:
+        if not os.path.isfile(su):
+            continue                          # 산출물 디렉토리에 없는 파일은 건너뜀 (방어)
         frames.update(parse_su(su))
-    for ci in glob.glob('build_ci/*.ci'):
+    for ci in ci_files:
+        if not os.path.isfile(ci):
+            continue
         for s, ts in parse_ci(ci).items():
             edges[s].update(ts)
 
@@ -76,9 +84,6 @@ def main():
     print('-' * 62)
     print(f'태스크 최대 스택(하한, 외부 프레임 제외) {total:>5} bytes')
     print('  * FreeRTOS/HAL/libgcc 등 외부 함수 프레임은 별도로 더해져야 함')
-    print()
-    print('비교: main_fixed.c 할당 스택은 워드 단위 (워드=4바이트)')
-    print('  Watchdog 128w=512B, CAN 256w=1024B, Sensor 128w=512B,')
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
